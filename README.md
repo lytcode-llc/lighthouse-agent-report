@@ -1,4 +1,4 @@
-# lighthouse-agent-report
+# @lytcode/lighthouse-agent-report
 
 The goal of this project is to automate website performance testing for optimal SEO and a11y. It runs Lighthouse across your entire dev site and generates an agent-readable markdown report for your AI coding assistant to use for page performance adjustments. Plus, it runs PageSpeed Insights on your production site to verify pages are performing as expected in production. 
 
@@ -9,7 +9,7 @@ Wraps [unlighthouse](https://unlighthouse.dev/) for URL discovery and execution.
 ### As a devDependency (recommended for projects and teams)
 
 ```bash
-npm install -D lighthouse-agent-report
+npm install -D @lytcode/lighthouse-agent-report
 ```
 
 Add scripts to `package.json`:
@@ -33,7 +33,7 @@ This is the recommended approach for Next.js projects. The package version is pi
 ### As a global tool
 
 ```bash
-npm install -g lighthouse-agent-report
+npm install -g @lytcode/lighthouse-agent-report
 ```
 
 Then run from your project root (the package reads your `app/` directory and writes output relative to wherever you run it):
