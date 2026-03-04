@@ -1,8 +1,10 @@
 # @lytcode/lighthouse-agent-report
 
-The goal of this project is to automate website performance testing for optimal SEO and a11y. It runs Lighthouse across your entire dev site and generates an agent-readable markdown report for your AI coding assistant to use for page performance adjustments. Plus, it runs PageSpeed Insights on your production site to verify pages are performing as expected in production. 
+Automates website performance testing for SEO and accessibility. Runs Lighthouse across your entire site and generates an agent-readable markdown report your AI coding assistant can use to target and fix performance issues. On production, it also runs PageSpeed Insights to include real-user Core Web Vitals alongside lab scores.
 
-Wraps [unlighthouse](https://unlighthouse.dev/) for URL discovery and execution. Automatically maps discovered URLs to your project's source files by scanning your `app/` or `pages/` directory — enabling a coding agent to trace issues back to the file responsible for each page.
+Wraps [unlighthouse](https://unlighthouse.dev/) for URL discovery and execution. Automatically detects your framework and maps discovered URLs to source files — enabling a coding agent to trace every issue back to the exact file responsible.
+
+Works with **Next.js** (App Router and Pages Router), **Astro**, and **SvelteKit** out of the box. The Lighthouse audit runs against any HTTP server regardless of framework.
 
 ## Install
 
@@ -47,14 +49,16 @@ Use this if you want a single installation that works across multiple projects w
 
 ## Framework support
 
-The package automatically detects your router and scans the appropriate directory:
+The package automatically detects your framework and scans the appropriate directory:
 
-| Router | Directory checked |
-|--------|------------------|
-| Next.js App Router | `app/` or `src/app/` |
-| Next.js Pages Router | `pages/` or `src/pages/` |
+| Framework | Directory | Dynamic segment syntax |
+|-----------|-----------|----------------------|
+| Next.js App Router | `app/` or `src/app/` | `[slug]`, `[...slug]`, `(group)` |
+| Next.js Pages Router | `pages/` or `src/pages/` | `[slug]`, `[...slug]` |
+| Astro | `src/pages/` or `pages/` | `[slug].astro`, `[...slug].astro` |
+| SvelteKit | `src/routes/` | `[param]`, `[...rest]`, `(group)`, `[[optional]]` |
 
-Route files are matched to discovered URLs using Next.js routing conventions — static segments, dynamic segments (`[slug]`), catch-all segments (`[...slug]`), and route groups (`(group)`) are all handled automatically.
+Detection is automatic — no configuration needed. The audit itself works with any HTTP server; framework detection only affects the **Route:** attribution in the report.
 
 ## Usage
 

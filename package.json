@@ -13,7 +13,9 @@
   ],
   "scripts": {
     "build": "tsup",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@unlighthouse/cli": "^0.14"
@@ -21,7 +23,8 @@
   "devDependencies": {
     "typescript": "^5",
     "tsup": "^8",
-    "tsx": "^4"
+    "tsx": "^4",
+    "vitest": "^3"
   },
   "engines": {
     "node": ">=18"
