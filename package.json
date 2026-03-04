@@ -1,0 +1,30 @@
+{
+  "name": "lighthouse-agent-report",
+  "version": "0.1.0",
+  "description": "Runs Lighthouse across your site and generates an agent-readable markdown report",
+  "type": "module",
+  "bin": {
+    "lighthouse-agent-report": "./dist/cli.js"
+  },
+  "main": "./dist/run.js",
+  "types": "./dist/types.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@unlighthouse/cli": "^0.14"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "tsup": "^8",
+    "tsx": "^4"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
