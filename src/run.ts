@@ -1,11 +1,11 @@
 import { spawn } from 'child_process'
-import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
 import { formatReport } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
-import type { PageResult, FailingAudit } from './types.js'
+import type { PageResult, FailingAudit, AuditElement } from './types.js'
 
 interface RunOptions {
   site?: string
@@ -15,32 +15,46 @@ interface RunOptions {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Unlighthouse result shapes (jsonExpanded reporter)
+// ci-result.json shape (jsonExpanded reporter)
 // ────────────────────────────────────────────────────────────────────────────
 
-interface UnlighthouseAudit {
+interface CIResultRoute {
+  path: string
+  score: number
+  categories: {
+    performance?: { score: number }
+    accessibility?: { score: number }
+    'best-practices'?: { score: number }
+    seo?: { score: number }
+  }
+}
+
+interface CIResult {
+  routes: CIResultRoute[]
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Per-page lighthouse.json shape
+// ────────────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AuditDetails = Record<string, any>
+
+interface LighthouseAudit {
   id: string
   title: string
+  description?: string
   score: number | null
   displayValue?: string
+  details?: AuditDetails
 }
 
-interface UnlighthouseCategory {
-  score: number | null
-  auditRefs?: Array<{ id: string; weight: number }>
-}
-
-interface UnlighthousePageReport {
-  route?: { path: string }
-  lighthouse?: {
-    categories?: {
-      performance?: UnlighthouseCategory
-      accessibility?: UnlighthouseCategory
-      'best-practices'?: UnlighthouseCategory
-      seo?: UnlighthouseCategory
-    }
-    audits?: Record<string, UnlighthouseAudit>
-  }
+interface LighthouseReport {
+  categories: Record<string, {
+    score: number
+    auditRefs: Array<{ id: string; weight: number }>
+  }>
+  audits: Record<string, LighthouseAudit>
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -64,40 +78,102 @@ function runUnlighthouse(site: string): Promise<void> {
   })
 }
 
+// Map a URL path to its unlighthouse report directory
+// /          → .unlighthouse/reports/
+// /contact   → .unlighthouse/reports/contact/
+// /blog/slug → .unlighthouse/reports/blog/slug/
+function pathToReportDir(urlPath: string, reportsBase: string): string {
+  if (urlPath === '/' || urlPath === '') return reportsBase
+  const segments = urlPath.replace(/^\//, '').split('/')
+  return join(reportsBase, ...segments)
+}
+
+// Extract DOM element details from an audit's details.items array.
+// Handles two common structures:
+//   1. items[].node  — each item has a .node property (e.g., color-contrast, link-name)
+//   2. items[] of type "node" — item itself is the node (e.g., lcp-breakdown-insight)
+function extractAuditElements(audit: LighthouseAudit): AuditElement[] {
+  const items: AuditDetails[] = audit.details?.items
+  if (!Array.isArray(items)) return []
+
+  const elements: AuditElement[] = []
+  for (const item of items) {
+    // Pattern 1: item is a node
+    if (item.type === 'node' && typeof item.selector === 'string') {
+      elements.push({
+        selector: item.selector,
+        snippet: item.snippet ?? undefined,
+      })
+    }
+    // Pattern 2: item has a nested .node
+    else if (item.node?.type === 'node' && typeof item.node.selector === 'string') {
+      elements.push({
+        selector: item.node.selector,
+        snippet: item.node.snippet ?? undefined,
+        explanation: item.node.explanation ?? undefined,
+      })
+    }
+  }
+  return elements
+}
+
+
 function extractFailingAudits(
-  category: UnlighthouseCategory | undefined,
-  allAudits: Record<string, UnlighthouseAudit>
+  category: { score: number; auditRefs: Array<{ id: string; weight: number }> } | undefined,
+  allAudits: Record<string, LighthouseAudit>
 ): FailingAudit[] {
   if (!category?.auditRefs) return []
 
   return category.auditRefs
     .filter((ref) => ref.weight > 0)
     .map((ref) => allAudits[ref.id])
-    .filter((audit): audit is UnlighthouseAudit => !!audit && audit.score !== null && audit.score < 0.9)
-    .map((audit) => ({
-      id: audit.id,
-      title: audit.title,
-      score: audit.score,
-      displayValue: audit.displayValue ?? null,
-    }))
+    .filter((audit): audit is LighthouseAudit => !!audit && audit.score !== null && audit.score < 0.9)
+    .map((audit) => {
+      const result: FailingAudit = {
+        id: audit.id,
+        title: audit.title,
+        score: audit.score,
+        displayValue: audit.displayValue ?? null,
+      }
+
+      if (audit.id === 'largest-contentful-paint') {
+        // LCP element lives in lcp-breakdown-insight (not the metric audit itself)
+        const breakdown = allAudits['lcp-breakdown-insight']
+        if (breakdown) result.elements = extractAuditElements(breakdown)
+        // lcp-discovery-insight has more targeted fix guidance than the metric audit itself
+        const discovery = allAudits['lcp-discovery-insight']
+        if (discovery?.description) result.description = discovery.description
+      } else {
+        if (audit.description) result.description = audit.description
+        const elements = extractAuditElements(audit)
+        if (elements.length > 0) result.elements = elements
+      }
+
+      return result
+    })
 }
 
-function tryReadUnlighthouseResult(): UnlighthousePageReport[] {
-  const primary = resolve(process.cwd(), '.unlighthouse', 'ci-result.json')
-  if (existsSync(primary)) {
-    return JSON.parse(readFileSync(primary, 'utf8'))
-  }
+// ────────────────────────────────────────────────────────────────────────────
+// Read unlighthouse output
+// ────────────────────────────────────────────────────────────────────────────
 
-  const reportsDir = resolve(process.cwd(), '.unlighthouse', 'reports')
-  if (existsSync(reportsDir)) {
-    const files = readdirSync(reportsDir).filter((f) => f.endsWith('.json'))
-    return files.map((f) => JSON.parse(readFileSync(join(reportsDir, f), 'utf8')))
+function readCIResult(unlighthouseDir: string): CIResultRoute[] {
+  const ciPath = join(unlighthouseDir, 'ci-result.json')
+  if (!existsSync(ciPath)) {
+    throw new Error(`Could not find ${ciPath}. Did unlighthouse complete successfully?`)
   }
+  const result: CIResult = JSON.parse(readFileSync(ciPath, 'utf8'))
+  if (!Array.isArray(result.routes)) {
+    throw new Error(`Unexpected ci-result.json format: missing "routes" array.`)
+  }
+  return result.routes
+}
 
-  throw new Error(
-    'Could not find unlighthouse output.\n' +
-    'Expected .unlighthouse/ci-result.json or .unlighthouse/reports/*.json'
-  )
+function readLighthouseReport(urlPath: string, reportsBase: string): LighthouseReport | null {
+  const dir = pathToReportDir(urlPath, reportsBase)
+  const filePath = join(dir, 'lighthouse.json')
+  if (!existsSync(filePath)) return null
+  return JSON.parse(readFileSync(filePath, 'utf8'))
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -116,32 +192,37 @@ export async function run(opts: RunOptions): Promise<void> {
     )
   }
 
-  // Build route map by scanning the project's app/ or pages/ directory
   const routeMap = buildRouteMap(process.cwd())
 
   await runUnlighthouse(site)
 
-  const rawPages = tryReadUnlighthouseResult()
+  const unlighthouseDir = resolve(process.cwd(), '.unlighthouse')
+  const reportsBase = join(unlighthouseDir, 'reports')
+  const ciRoutes = readCIResult(unlighthouseDir)
 
-  const pages: PageResult[] = rawPages.map((page) => {
-    const path = page.route?.path ?? '/'
-    const lh = page.lighthouse
+  const pages: PageResult[] = ciRoutes.map((route) => {
+    const lh = readLighthouseReport(route.path, reportsBase)
 
     if (!lh) {
       return {
-        path,
-        scores: { performance: 0, accessibility: 0, bestPractices: 0, seo: 0 },
+        path: route.path,
+        scores: {
+          performance: route.categories.performance?.score ?? 0,
+          accessibility: route.categories.accessibility?.score ?? 0,
+          bestPractices: route.categories['best-practices']?.score ?? 0,
+          seo: route.categories.seo?.score ?? 0,
+        },
         failingAudits: { performance: [], accessibility: [], bestPractices: [], seo: [] },
-        source: resolveSource(path, routeMap),
-        error: 'No Lighthouse data',
+        source: resolveSource(route.path, routeMap),
+        error: 'Full Lighthouse report not found',
       }
     }
 
-    const categories = lh.categories ?? {}
-    const audits = lh.audits ?? {}
+    const categories = lh.categories
+    const audits = lh.audits
 
     return {
-      path,
+      path: route.path,
       scores: {
         performance: categories.performance?.score ?? 0,
         accessibility: categories.accessibility?.score ?? 0,
@@ -154,7 +235,7 @@ export async function run(opts: RunOptions): Promise<void> {
         bestPractices: extractFailingAudits(categories['best-practices'], audits),
         seo: extractFailingAudits(categories.seo, audits),
       },
-      source: resolveSource(path, routeMap),
+      source: resolveSource(route.path, routeMap),
     }
   })
 
@@ -174,7 +255,7 @@ export async function run(opts: RunOptions): Promise<void> {
 
   const generatedAt = new Date().toISOString()
   const markdown = formatReport(pages, site, generatedAt)
-  const json = JSON.stringify({ generatedAt, site: site, pages }, null, 2)
+  const json = JSON.stringify({ generatedAt, site, pages }, null, 2)
 
   mkdirSync(resolve(process.cwd(), outputDir), { recursive: true })
 

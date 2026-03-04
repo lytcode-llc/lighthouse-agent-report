@@ -7,11 +7,19 @@ export interface PageSource {
   routeFile: string;
 }
 
+export interface AuditElement {
+  selector: string;
+  snippet?: string;
+  explanation?: string;
+}
+
 export interface FailingAudit {
   id: string;
   title: string;
+  description?: string;         // Lighthouse's own guidance text (may include "Learn more" links)
   score: number | null;
   displayValue: string | null;
+  elements?: AuditElement[];    // Affected DOM elements with selectors
 }
 
 export type CWVCategory = 'FAST' | 'AVERAGE' | 'SLOW'

@@ -1,4 +1,4 @@
-import type { PageResult, FailingAudit, FieldData, CWVCategory } from './types.js'
+import type { PageResult, FailingAudit, AuditElement, FieldData, CWVCategory } from './types.js'
 
 const LAB_THRESHOLD = 90
 
@@ -27,6 +27,18 @@ function formatCLS(raw: number): string {
   return (raw / 100).toFixed(3)
 }
 
+function renderElement(el: AuditElement): string {
+  let out = `- \`${el.selector}\``
+  if (el.snippet) {
+    const snip = el.snippet.length > 150 ? el.snippet.slice(0, 150) + '…' : el.snippet
+    out += `\n  \`${snip}\``
+  }
+  if (el.explanation) {
+    out += `\n  ${el.explanation}`
+  }
+  return out
+}
+
 function auditTable(audits: FailingAudit[]): string {
   if (audits.length === 0) return '_No failing audits_\n'
   const rows = audits
@@ -35,7 +47,28 @@ function auditTable(audits: FailingAudit[]): string {
       return `| ${a.title} | ${score} | ${a.displayValue ?? '—'} |`
     })
     .join('\n')
-  return `| Audit | Score | Details |\n|-------|-------|---------|  \n${rows}\n`
+
+  let out = `| Audit | Score | Details |\n|-------|-------|---------|  \n${rows}\n`
+
+  for (const audit of audits) {
+    const hasElements = audit.elements && audit.elements.length > 0
+    const hasDescription = !!audit.description
+    if (!hasElements && !hasDescription) continue
+
+    out += '\n'
+    if (hasElements) {
+      const capped = audit.elements!.slice(0, 5)
+      out += capped.map(renderElement).join('\n') + '\n'
+      if (audit.elements!.length > 5) {
+        out += `_(${audit.elements!.length - 5} more elements not shown)_\n`
+      }
+    }
+    if (hasDescription) {
+      out += `> ${audit.description}\n`
+    }
+  }
+
+  return out
 }
 
 function fieldDataSection(fd: FieldData): string {
