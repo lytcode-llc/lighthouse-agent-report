@@ -26,5 +26,26 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "author": "Lytcode LLC",
+  "keywords": [
+    "lighthouse",
+    "core-web-vitals",
+    "performance",
+    "seo",
+    "accessibility",
+    "unlighthouse",
+    "pagespeed",
+    "cwv",
+    "ai-agent",
+    "next.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lytcode-llc/lighthouse-agent-report.git"
+  },
+  "homepage": "https://github.com/lytcode-llc/lighthouse-agent-report#readme",
+  "bugs": {
+    "url": "https://github.com/lytcode-llc/lighthouse-agent-report/issues"
+  }
 }

@@ -8,7 +8,7 @@ import { fetchPSIForPages, isLocalhost } from './psi.js'
 import type { PageResult, FailingAudit } from './types.js'
 
 interface RunOptions {
-  site: string
+  site?: string
   config?: string
   out?: string
   psiKey?: string
@@ -108,11 +108,18 @@ export async function run(opts: RunOptions): Promise<void> {
   const config = await loadConfig(opts.config)
   const outputDir = opts.out ?? config.output ?? 'reports/lighthouse'
   const psiKey = opts.psiKey ?? process.env.PSI_API_KEY
+  const site = opts.site ?? config.site
+
+  if (!site) {
+    throw new Error(
+      'No site URL provided. Pass --site <url> or set "site" in lighthouse-audit.config.js.'
+    )
+  }
 
   // Build route map by scanning the project's app/ or pages/ directory
   const routeMap = buildRouteMap(process.cwd())
 
-  await runUnlighthouse(opts.site)
+  await runUnlighthouse(site)
 
   const rawPages = tryReadUnlighthouseResult()
 
@@ -152,22 +159,22 @@ export async function run(opts: RunOptions): Promise<void> {
   })
 
   // PSI field data — only for non-localhost sites
-  if (psiKey && !isLocalhost(opts.site)) {
+  if (psiKey && !isLocalhost(site)) {
     const paths = pages.filter((p) => !p.error).map((p) => p.path)
-    const fieldDataMap = await fetchPSIForPages(opts.site, paths, psiKey)
+    const fieldDataMap = await fetchPSIForPages(site, paths, psiKey)
     for (const page of pages) {
       const fd = fieldDataMap.get(page.path)
       if (fd) page.fieldData = fd
     }
-  } else if (psiKey && isLocalhost(opts.site)) {
+  } else if (psiKey && isLocalhost(site)) {
     console.log('\nSkipping PSI field data — not available for localhost.')
   } else {
     console.log('\nTip: Pass --psi-key or set PSI_API_KEY to include real-user field data.')
   }
 
   const generatedAt = new Date().toISOString()
-  const markdown = formatReport(pages, opts.site, generatedAt)
-  const json = JSON.stringify({ generatedAt, site: opts.site, pages }, null, 2)
+  const markdown = formatReport(pages, site, generatedAt)
+  const json = JSON.stringify({ generatedAt, site: site, pages }, null, 2)
 
   mkdirSync(resolve(process.cwd(), outputDir), { recursive: true })
 
@@ -181,7 +188,7 @@ export async function run(opts: RunOptions): Promise<void> {
   writeFileSync(archiveMd, markdown, 'utf8')
 
   console.log(`\n── Lighthouse Audit Complete ──`)
-  console.log(`Site:   ${opts.site}`)
+  console.log(`Site:   ${site}`)
   console.log(`Pages:  ${pages.length}`)
   console.log(`Report: ${latestMd}`)
 

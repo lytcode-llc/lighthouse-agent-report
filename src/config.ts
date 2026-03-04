@@ -36,5 +36,6 @@ export async function loadConfig(configPath?: string): Promise<AuditConfig> {
 
   return {
     output: config.output ?? 'reports/lighthouse',
+    site: config.site,
   }
 }

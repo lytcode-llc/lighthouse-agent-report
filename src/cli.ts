@@ -12,15 +12,15 @@ const { values } = parseArgs({
   allowPositionals: false,
 })
 
-if (values.help || !values.site) {
+if (values.help) {
   console.log(`
 lighthouse-agent-report — Lighthouse audit with agent-readable output
 
 Usage:
-  lighthouse-agent-report --site <url> [options]
+  lighthouse-agent-report [--site <url>] [options]
 
 Options:
-  --site      URL to audit (required)
+  --site      URL to audit (defaults to "site" in lighthouse-audit.config.js)
   --config    Path to config file (default: lighthouse-audit.config.js)
   --out       Output directory (default: reports/lighthouse)
   --psi-key   PageSpeed Insights API key for real-user field data
@@ -29,10 +29,11 @@ Options:
 
 Examples:
   lighthouse-agent-report --site http://localhost:3000
-  lighthouse-agent-report --site https://example.com --psi-key YOUR_KEY
+  lighthouse-agent-report                              # uses site from config
+  lighthouse-agent-report --psi-key YOUR_KEY           # uses site from config
   PSI_API_KEY=YOUR_KEY lighthouse-agent-report --site https://example.com
   `)
-  process.exit(values.help ? 0 : 1)
+  process.exit(0)
 }
 
 run({

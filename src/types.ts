@@ -1,5 +1,6 @@
 export interface AuditConfig {
   output?: string;
+  site?: string;
 }
 
 export interface PageSource {
