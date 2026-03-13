@@ -199,6 +199,30 @@ describe('SvelteKit', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
+// Gatsby (static pages — dynamic pages via gatsby-node.js are not supported)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Gatsby', () => {
+  let root: string
+  beforeEach(() => {
+    root = scaffold([
+      'src/pages/index.js',
+      'src/pages/about.js',
+      'src/pages/blog/index.js',
+      'src/pages/blog/{Post.slug}.js',
+    ])
+  })
+  afterEach(() => rmSync(root, { recursive: true }))
+
+  it('maps static pages via Pages Router detection', () => {
+    const map = buildRouteMap(root)
+    expect(resolveSource('/', map).routeFile).toBe('src/pages/index.js')
+    expect(resolveSource('/about', map).routeFile).toBe('src/pages/about.js')
+    expect(resolveSource('/blog', map).routeFile).toBe('src/pages/blog/index.js')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
 // Unknown framework
 // ────────────────────────────────────────────────────────────────────────────
 

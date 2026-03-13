@@ -65,10 +65,11 @@ function runUnlighthouse(site: string): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`\nRunning unlighthouse on ${site}…`)
 
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
     const proc = spawn(
-      'npx',
+      npx,
       ['unlighthouse-ci', '--site', site, '--reporter', 'jsonExpanded'],
-      { stdio: 'inherit', shell: true }
+      { stdio: 'inherit' }
     )
 
     proc.on('close', (code) => {

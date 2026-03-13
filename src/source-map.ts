@@ -221,7 +221,7 @@ export function buildRouteMap(cwd: string): RouteEntry[] {
     }
   }
 
-  console.warn('Warning: Could not detect a supported router (Next.js, SvelteKit, Astro). Route file attribution will be unavailable.')
+  console.warn('Warning: Could not detect a supported router (Next.js, SvelteKit, Astro, Gatsby). Route file attribution will be unavailable.')
   return []
 }
 
