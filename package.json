@@ -1,6 +1,6 @@
 {
   "name": "@lytcode/lighthouse-agent-report",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Runs Lighthouse across your site and generates an agent-readable markdown report",
   "type": "module",
   "bin": {
