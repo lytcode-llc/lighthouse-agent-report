@@ -13,7 +13,7 @@ export interface AuditElement {
   explanation?: string;
 }
 
-export interface FailingAudit {
+export interface AuditEntry {
   id: string;
   title: string;
   description?: string;         // Lighthouse's own guidance text (may include "Learn more" links)
@@ -21,6 +21,9 @@ export interface FailingAudit {
   displayValue: string | null;
   elements?: AuditElement[];    // Affected DOM elements with selectors
 }
+
+// Backward-compat alias
+export type FailingAudit = AuditEntry;
 
 export type CWVCategory = 'FAST' | 'AVERAGE' | 'SLOW'
 
@@ -42,11 +45,12 @@ export interface FieldData {
 export interface PageResult {
   path: string;
   scores: { performance: number; accessibility: number; bestPractices: number; seo: number };
-  failingAudits: {
-    performance: FailingAudit[];
-    accessibility: FailingAudit[];
-    bestPractices: FailingAudit[];
-    seo: FailingAudit[];
+  audits: {
+    performance: AuditEntry[];      // weight > 0 audits for this category
+    accessibility: AuditEntry[];
+    bestPractices: AuditEntry[];
+    seo: AuditEntry[];
+    opportunities: AuditEntry[];    // weight = 0 audits with scores (cross-category)
   };
   source: PageSource;
   fieldData?: FieldData;

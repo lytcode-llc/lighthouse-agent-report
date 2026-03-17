@@ -1,4 +1,4 @@
-import type { PageResult, FailingAudit, AuditElement, FieldData, CWVCategory } from './types.js'
+import type { PageResult, AuditEntry, AuditElement, FieldData, CWVCategory } from './types.js'
 
 const LAB_THRESHOLD = 90
 
@@ -39,18 +39,24 @@ function renderElement(el: AuditElement): string {
   return out
 }
 
-function auditTable(audits: FailingAudit[]): string {
-  if (audits.length === 0) return '_No failing audits_\n'
+function auditScore(a: AuditEntry): string {
+  if (a.score === null) return 'N/A'
+  const pct = Math.round(a.score * 100)
+  if (pct >= 90) return `✓ ${pct}`
+  return `⚠ ${pct}`
+}
+
+function auditTable(audits: AuditEntry[]): string {
+  if (audits.length === 0) return '_No audits_\n'
   const rows = audits
-    .map((a) => {
-      const score = a.score !== null ? Math.round(a.score * 100) : 'N/A'
-      return `| ${a.title} | ${score} | ${a.displayValue ?? '—'} |`
-    })
+    .map((a) => `| ${a.title} | ${auditScore(a)} | ${a.displayValue || '—'} |`)
     .join('\n')
 
-  let out = `| Audit | Score | Details |\n|-------|-------|---------|  \n${rows}\n`
+  let out = `| Audit | Score | Value |\n|-------|-------|-------|  \n${rows}\n`
 
+  // Show element details and descriptions only for failing audits
   for (const audit of audits) {
+    if (audit.score === null || audit.score >= 0.9) continue
     const hasElements = audit.elements && audit.elements.length > 0
     const hasDescription = !!audit.description
     if (!hasElements && !hasDescription) continue
@@ -96,11 +102,22 @@ function hasFailingFieldData(page: PageResult): boolean {
   return page.fieldData.overall === 'SLOW' || page.fieldData.overall === 'AVERAGE'
 }
 
+function hasFailingAuditEntries(page: PageResult): boolean {
+  const all = [
+    ...page.audits.performance,
+    ...page.audits.accessibility,
+    ...page.audits.bestPractices,
+    ...page.audits.seo,
+    ...page.audits.opportunities,
+  ]
+  return all.some((a) => a.score !== null && a.score < 0.9)
+}
+
 function needsAttention(page: PageResult): boolean {
   if (page.error) return false
   return (
     hasFailingLabScores(page) ||
-    Object.values(page.failingAudits).some((a) => a.length > 0) ||
+    hasFailingAuditEntries(page) ||
     hasFailingFieldData(page)
   )
 }
@@ -207,25 +224,29 @@ function pageDetail(page: PageResult): string[] {
     lines.push(fieldDataSection(page.fieldData))
   }
 
-  // Failing lab audits
-  const categories: Array<[string, FailingAudit[]]> = [
-    ['Performance', page.failingAudits.performance],
-    ['Accessibility', page.failingAudits.accessibility],
-    ['Best Practices', page.failingAudits.bestPractices],
-    ['SEO', page.failingAudits.seo],
+  // All audits per category
+  const categories: Array<[string, AuditEntry[]]> = [
+    ['Performance', page.audits.performance],
+    ['Accessibility', page.audits.accessibility],
+    ['Best Practices', page.audits.bestPractices],
+    ['SEO', page.audits.seo],
   ]
 
-  let hasFailingAudits = false
   for (const [label, audits] of categories) {
     if (audits.length > 0) {
-      hasFailingAudits = true
-      lines.push(`#### ${label} Issues`)
+      lines.push(`#### ${label}`)
       lines.push(auditTable(audits))
     }
   }
 
-  if (!hasFailingAudits && !page.fieldData) {
-    lines.push(`_All audits passing._`)
+  if (page.audits.opportunities.length > 0) {
+    lines.push(`#### Opportunities & Diagnostics`)
+    lines.push(auditTable(page.audits.opportunities))
+  }
+
+  const hasAnyAudits = categories.some(([, a]) => a.length > 0) || page.audits.opportunities.length > 0
+  if (!hasAnyAudits && !page.fieldData) {
+    lines.push(`_No audit data available._`)
     lines.push(``)
   }
 

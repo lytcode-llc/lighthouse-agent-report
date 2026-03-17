@@ -4,7 +4,7 @@ Automates website performance testing for SEO and accessibility. Runs Lighthouse
 
 Wraps [unlighthouse](https://unlighthouse.dev/) for URL discovery and execution. Automatically detects your framework and maps discovered URLs to source files — enabling a coding agent to trace every issue back to the exact file responsible.
 
-Works with **Next.js** (App Router and Pages Router), **Astro**, and **SvelteKit** out of the box. The Lighthouse audit runs against any HTTP server regardless of framework.
+Works with **Next.js** (App Router and Pages Router), **Astro**, **SvelteKit**, and **Gatsby** out of the box. The Lighthouse audit runs against any HTTP server regardless of framework.
 
 ## Install
 
@@ -57,6 +57,7 @@ The package automatically detects your framework and scans the appropriate direc
 | Next.js Pages Router | `pages/` or `src/pages/` | `[slug]`, `[...slug]` |
 | Astro | `src/pages/` or `pages/` | `[slug].astro`, `[...slug].astro` |
 | SvelteKit | `src/routes/` | `[param]`, `[...rest]`, `(group)`, `[[optional]]` |
+| Gatsby | `src/pages/` or `pages/` | n/a (static pages only) |
 
 Detection is automatic — no configuration needed. The audit itself works with any HTTP server; framework detection only affects the **Route:** attribution in the report.
 
@@ -121,6 +122,8 @@ Get a free API key at [console.cloud.google.com](https://console.cloud.google.co
 
 ## Output
 
+See [docs/example-report.md](docs/example-report.md) for a full example of what a generated report looks like.
+
 The tool writes to your output directory:
 
 - `latest.md` — agent-readable markdown with summary table + issue breakdown
@@ -159,8 +162,19 @@ Lab data: unlighthouse (desktop simulation) | Field data: PageSpeed Insights (re
 | CLS    | 0.04 | FAST ✓ |
 | INP    | 180ms | FAST ✓ |
 
-#### Performance Issues
-| Audit | Score | Details |
+#### Performance
+| Audit | Score | Value |
+|-------|-------|-------|
+| First Contentful Paint | ⚠ 64 | 2.6 s |
+| Largest Contentful Paint | ⚠ 42 | 4.8 s |
+| Total Blocking Time | ✓ 100 | 0 ms |
+...
+
+#### Opportunities & Diagnostics
+| Audit | Score | Value |
+|-------|-------|-------|
+| Improve image delivery | ⚠ 0 | Est savings of 95 KiB |
+| Reduce unused JavaScript | ⚠ 0 | Est savings of 118 KiB |
 ...
 ```
 

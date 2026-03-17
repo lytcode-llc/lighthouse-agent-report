@@ -5,7 +5,7 @@ import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
 import { formatReport } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
-import type { PageResult, FailingAudit, AuditElement } from './types.js'
+import type { PageResult, AuditEntry, AuditElement } from './types.js'
 
 interface RunOptions {
   site?: string
@@ -119,39 +119,72 @@ function extractAuditElements(audit: LighthouseAudit): AuditElement[] {
 }
 
 
-function extractFailingAudits(
+// Pure data-blob audit IDs that have no useful representation in markdown
+const SKIP_AUDIT_IDS = new Set([
+  'screenshot-thumbnails',
+  'final-screenshot',
+  'script-treemap-data',
+  'metrics',
+  'diagnostics',
+  'network-requests',
+  'main-thread-tasks',
+])
+
+function auditToEntry(audit: LighthouseAudit, allAudits: Record<string, LighthouseAudit>): AuditEntry {
+  const entry: AuditEntry = {
+    id: audit.id,
+    title: audit.title,
+    score: audit.score,
+    displayValue: audit.displayValue ?? null,
+  }
+
+  if (audit.id === 'largest-contentful-paint') {
+    // LCP element lives in lcp-breakdown-insight (not the metric audit itself)
+    const breakdown = allAudits['lcp-breakdown-insight']
+    if (breakdown) entry.elements = extractAuditElements(breakdown)
+    // lcp-discovery-insight has more targeted fix guidance than the metric audit itself
+    const discovery = allAudits['lcp-discovery-insight']
+    if (discovery?.description) entry.description = discovery.description
+  } else {
+    if (audit.description) entry.description = audit.description
+    const elements = extractAuditElements(audit)
+    if (elements.length > 0) entry.elements = elements
+  }
+
+  return entry
+}
+
+function extractCategoryAudits(
   category: { score: number; auditRefs: Array<{ id: string; weight: number }> } | undefined,
   allAudits: Record<string, LighthouseAudit>
-): FailingAudit[] {
+): AuditEntry[] {
   if (!category?.auditRefs) return []
 
   return category.auditRefs
     .filter((ref) => ref.weight > 0)
     .map((ref) => allAudits[ref.id])
-    .filter((audit): audit is LighthouseAudit => !!audit && audit.score !== null && audit.score < 0.9)
-    .map((audit) => {
-      const result: FailingAudit = {
-        id: audit.id,
-        title: audit.title,
-        score: audit.score,
-        displayValue: audit.displayValue ?? null,
-      }
+    .filter((audit): audit is LighthouseAudit => !!audit)
+    .map((audit) => auditToEntry(audit, allAudits))
+}
 
-      if (audit.id === 'largest-contentful-paint') {
-        // LCP element lives in lcp-breakdown-insight (not the metric audit itself)
-        const breakdown = allAudits['lcp-breakdown-insight']
-        if (breakdown) result.elements = extractAuditElements(breakdown)
-        // lcp-discovery-insight has more targeted fix guidance than the metric audit itself
-        const discovery = allAudits['lcp-discovery-insight']
-        if (discovery?.description) result.description = discovery.description
-      } else {
-        if (audit.description) result.description = audit.description
-        const elements = extractAuditElements(audit)
-        if (elements.length > 0) result.elements = elements
-      }
+function extractOpportunities(
+  categories: LighthouseReport['categories'],
+  allAudits: Record<string, LighthouseAudit>
+): AuditEntry[] {
+  const seen = new Set<string>()
+  const results: AuditEntry[] = []
 
-      return result
-    })
+  for (const category of Object.values(categories)) {
+    for (const ref of category.auditRefs) {
+      if (ref.weight > 0 || seen.has(ref.id) || SKIP_AUDIT_IDS.has(ref.id)) continue
+      seen.add(ref.id)
+      const audit = allAudits[ref.id]
+      if (!audit || audit.score === null) continue
+      results.push(auditToEntry(audit, allAudits))
+    }
+  }
+
+  return results
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -213,14 +246,14 @@ export async function run(opts: RunOptions): Promise<void> {
           bestPractices: route.categories['best-practices']?.score ?? 0,
           seo: route.categories.seo?.score ?? 0,
         },
-        failingAudits: { performance: [], accessibility: [], bestPractices: [], seo: [] },
+        audits: { performance: [], accessibility: [], bestPractices: [], seo: [], opportunities: [] },
         source: resolveSource(route.path, routeMap),
         error: 'Full Lighthouse report not found',
       }
     }
 
     const categories = lh.categories
-    const audits = lh.audits
+    const lhAudits = lh.audits
 
     return {
       path: route.path,
@@ -230,11 +263,12 @@ export async function run(opts: RunOptions): Promise<void> {
         bestPractices: categories['best-practices']?.score ?? 0,
         seo: categories.seo?.score ?? 0,
       },
-      failingAudits: {
-        performance: extractFailingAudits(categories.performance, audits),
-        accessibility: extractFailingAudits(categories.accessibility, audits),
-        bestPractices: extractFailingAudits(categories['best-practices'], audits),
-        seo: extractFailingAudits(categories.seo, audits),
+      audits: {
+        performance: extractCategoryAudits(categories.performance, lhAudits),
+        accessibility: extractCategoryAudits(categories.accessibility, lhAudits),
+        bestPractices: extractCategoryAudits(categories['best-practices'], lhAudits),
+        seo: extractCategoryAudits(categories.seo, lhAudits),
+        opportunities: extractOpportunities(categories, lhAudits),
       },
       source: resolveSource(route.path, routeMap),
     }

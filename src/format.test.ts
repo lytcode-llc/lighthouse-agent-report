@@ -9,7 +9,7 @@ function makePage(overrides: Partial<PageResult> = {}): PageResult {
   return {
     path: '/',
     scores: { performance: 1, accessibility: 1, bestPractices: 1, seo: 1 },
-    failingAudits: { performance: [], accessibility: [], bestPractices: [], seo: [] },
+    audits: { performance: [], accessibility: [], bestPractices: [], seo: [], opportunities: [] },
     source: { routeFile: 'app/page.tsx' },
     ...overrides,
   }
@@ -66,11 +66,12 @@ describe('formatReport', () => {
 
   it('renders failing audits table', () => {
     const page = makePage({
-      failingAudits: {
+      audits: {
         performance: [{ id: 'render-blocking-resources', title: 'Eliminate render-blocking resources', score: 0.5, displayValue: '0.5 s' }],
         accessibility: [],
         bestPractices: [],
         seo: [],
+        opportunities: [],
       },
     })
     const md = formatReport([page], SITE, GENERATED_AT)
@@ -80,7 +81,7 @@ describe('formatReport', () => {
 
   it('renders audit elements with selectors', () => {
     const page = makePage({
-      failingAudits: {
+      audits: {
         performance: [],
         accessibility: [
           {
@@ -93,6 +94,7 @@ describe('formatReport', () => {
         ],
         bestPractices: [],
         seo: [],
+        opportunities: [],
       },
     })
     const md = formatReport([page], SITE, GENERATED_AT)

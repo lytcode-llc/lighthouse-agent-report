@@ -143,7 +143,7 @@ function patternToRegex(pattern: string): RegExp {
     .replace(/\[\.\.\.([^\]]+)\]/g, '(.+)')    // [...slug] / [...rest]
     .replace(/\[([^\]]+)\]/g, '([^/]+)')        // [slug] / [param]
     .replace(/\//g, '\\/')
-  return new RegExp(`^${regexStr}$`)
+  return new RegExp(`^${regexStr}\\/?$`)
 }
 
 // Static routes take priority over dynamic, dynamic over catch-all
