@@ -41,7 +41,10 @@
     "pagespeed",
     "cwv",
     "ai-agent",
-    "next.js"
+    "next.js",
+    "sveltekit",
+    "astro",
+    "gatsby"
   ],
   "repository": {
     "type": "git",
