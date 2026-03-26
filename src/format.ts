@@ -122,11 +122,39 @@ function needsAttention(page: PageResult): boolean {
   )
 }
 
+function truncateToBytes(str: string, maxBytes: number): string {
+  const encoded = new TextEncoder().encode(str)
+  if (encoded.length <= maxBytes) return str
+  let end = maxBytes
+  // Walk back to the start of a multi-byte UTF-8 sequence
+  while (end > 0 && (encoded[end] & 0xc0) === 0x80) end--
+  return new TextDecoder().decode(encoded.slice(0, end))
+}
+
+function pathToFile(path: string): string {
+  const stripped = path.replace(/^\//, '').replace(/\/$/, '')
+  const name = stripped === '' ? 'index' : stripped
+  // Truncate the raw slug before encoding so we never cut mid-percent-sequence.
+  // Reserve 3 bytes for the .md extension.
+  const truncated = truncateToBytes(name, 252)
+  return `pages/${encodeURIComponent(truncated)}.md`
+}
+
+function failingScoresSummary(page: PageResult): string {
+  const parts: string[] = []
+  const { performance, accessibility, bestPractices, seo } = page.scores
+  if (Math.round(performance * 100) < LAB_THRESHOLD) parts.push(`Performance: **${Math.round(performance * 100)}** ⚠`)
+  if (Math.round(accessibility * 100) < LAB_THRESHOLD) parts.push(`Accessibility: **${Math.round(accessibility * 100)}** ⚠`)
+  if (Math.round(bestPractices * 100) < LAB_THRESHOLD) parts.push(`Best Practices: **${Math.round(bestPractices * 100)}** ⚠`)
+  if (Math.round(seo * 100) < LAB_THRESHOLD) parts.push(`SEO: **${Math.round(seo * 100)}** ⚠`)
+  return parts.join(', ')
+}
+
 // ────────────────────────────────────────────────────────────────────────────
-// Report
+// Index
 // ────────────────────────────────────────────────────────────────────────────
 
-export function formatReport(pages: PageResult[], site: string, generatedAt: string): string {
+export function formatIndex(pages: PageResult[], site: string, generatedAt: string): string {
   const lines: string[] = []
   const hasAnyFieldData = pages.some((p) => p.fieldData)
 
@@ -149,7 +177,7 @@ export function formatReport(pages: PageResult[], site: string, generatedAt: str
   for (const page of pages) {
     if (page.error) {
       const fd = hasAnyFieldData ? ' — |' : ''
-      lines.push(`| \`${page.path}\` | ❌ Error | — | — | — |${fd}`)
+      lines.push(`| [\`${page.path}\`](${pathToFile(page.path)}) | ❌ Error | — | — | — |${fd}`)
       continue
     }
     const { performance, accessibility, bestPractices, seo } = page.scores
@@ -157,7 +185,7 @@ export function formatReport(pages: PageResult[], site: string, generatedAt: str
       ? ` ${page.fieldData ? cwvBadge(page.fieldData.overall) : '—'} |`
       : ''
     lines.push(
-      `| \`${page.path}\` | ${labScore(performance)} | ${labScore(accessibility)} | ${labScore(bestPractices)} | ${labScore(seo)} |${fieldCol}`
+      `| [\`${page.path}\`](${pathToFile(page.path)}) | ${labScore(performance)} | ${labScore(accessibility)} | ${labScore(bestPractices)} | ${labScore(seo)} |${fieldCol}`
     )
   }
 
@@ -177,7 +205,9 @@ export function formatReport(pages: PageResult[], site: string, generatedAt: str
     lines.push(`_All pages passed lab thresholds${hasAnyFieldData ? ' and field data checks' : ''}._`)
   } else {
     for (const page of attention) {
-      lines.push(...pageDetail(page))
+      const file = pathToFile(page.path)
+      const scores = failingScoresSummary(page)
+      lines.push(`- [\`${page.path}\`](${file})${scores ? ` — ${scores}` : ''}`)
     }
   }
 
@@ -185,14 +215,91 @@ export function formatReport(pages: PageResult[], site: string, generatedAt: str
   lines.push(`---`)
   lines.push(``)
 
-  // ── All Pages ──────────────────────────────────────────────────────────────
-  lines.push(`## All Pages (Full Detail)`)
-  lines.push(``)
-
-  for (const page of pages) {
-    lines.push(...pageDetail(page))
+  // ── Cross-Page Audit Divergence ────────────────────────────────────────────
+  const divergenceSection = crossPageDivergenceSection(pages)
+  if (divergenceSection) {
+    lines.push(divergenceSection)
   }
 
+  return lines.join('\n')
+}
+
+function crossPageDivergenceSection(pages: PageResult[]): string {
+  const auditScores = new Map<string, Array<{ score: number; title: string; path: string }>>()
+
+  for (const page of pages) {
+    if (page.error) continue
+    const allAudits = [
+      ...page.audits.performance,
+      ...page.audits.accessibility,
+      ...page.audits.bestPractices,
+      ...page.audits.seo,
+      ...page.audits.opportunities,
+    ]
+    for (const audit of allAudits) {
+      if (audit.score === null) continue
+      if (!auditScores.has(audit.id)) {
+        auditScores.set(audit.id, [])
+      }
+      auditScores.get(audit.id)!.push({ score: audit.score, title: audit.title, path: page.path })
+    }
+  }
+
+  const divergences: Array<{
+    title: string
+    lowScore: number
+    lowPage: string
+    highScore: number
+    highPage: string
+    spread: number
+  }> = []
+
+  for (const [, entries] of auditScores) {
+    if (entries.length < 2) continue
+    const sorted = [...entries].sort((a, b) => a.score - b.score)
+    const low = sorted[0]
+    const high = sorted[sorted.length - 1]
+    const spread = high.score - low.score
+    if (spread >= 0.2) {
+      divergences.push({
+        title: entries[0].title,
+        lowScore: Math.round(low.score * 100),
+        lowPage: low.path,
+        highScore: Math.round(high.score * 100),
+        highPage: high.path,
+        spread,
+      })
+    }
+  }
+
+  if (divergences.length === 0) return ''
+
+  divergences.sort((a, b) => b.spread - a.spread)
+  const capped = divergences.slice(0, 20)
+
+  const lines: string[] = []
+  lines.push(`## Cross-Page Audit Divergence`)
+  lines.push(``)
+  lines.push(`| Audit | Low Score | Low Page | High Score | High Page |`)
+  lines.push(`|-------|-----------|----------|------------|-----------|`)
+  for (const d of capped) {
+    lines.push(`| ${d.title} | ${d.lowScore} | \`${d.lowPage}\` | ${d.highScore} | \`${d.highPage}\` |`)
+  }
+  lines.push(``)
+
+  return lines.join('\n')
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Per-page file
+// ────────────────────────────────────────────────────────────────────────────
+
+export function formatPage(page: PageResult, site: string, generatedAt: string): string {
+  const lines: string[] = []
+  lines.push(`# Lighthouse Audit — ${page.path}`)
+  lines.push(`Generated: ${generatedAt} | Site: ${site} | URL: ${site}${page.path}`)
+  lines.push(``)
+  lines.push(...pageDetail(page))
   return lines.join('\n')
 }
 
@@ -200,7 +307,9 @@ function pageDetail(page: PageResult): string[] {
   const lines: string[] = []
 
   lines.push(`### \`${page.path}\``)
-  lines.push(`**Route:** \`${page.source.routeFile}\``)
+  if (page.source.routeFile !== null) {
+    lines.push(`**Route:** \`${page.source.routeFile}\``)
+  }
 
   if (page.error) {
     lines.push(`**Error:** ${page.error}`)

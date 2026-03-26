@@ -4,7 +4,7 @@ export interface AuditConfig {
 }
 
 export interface PageSource {
-  routeFile: string;
+  routeFile: string | null;
 }
 
 export interface AuditElement {
