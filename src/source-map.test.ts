@@ -234,6 +234,6 @@ describe('Unknown framework', () => {
   it('returns empty map and does not throw', () => {
     const map = buildRouteMap(root)
     expect(map).toEqual([])
-    expect(resolveSource('/about', map).routeFile).toBe('unknown')
+    expect(resolveSource('/about', map).routeFile).toBeNull()
   })
 })

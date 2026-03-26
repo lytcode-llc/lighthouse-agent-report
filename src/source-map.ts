@@ -221,7 +221,7 @@ export function buildRouteMap(cwd: string): RouteEntry[] {
     }
   }
 
-  console.warn('Warning: Could not detect a supported router (Next.js, SvelteKit, Astro, Gatsby). Route file attribution will be unavailable.')
+  console.warn('Warning: Could not detect a supported router (Next.js, SvelteKit, Astro, Gatsby). Route file attribution will be unavailable — this is expected for CMS-based sites (WordPress, Drupal, etc.).')
   return []
 }
 
@@ -231,5 +231,5 @@ export function resolveSource(urlPath: string, routeMap: RouteEntry[]): PageSour
       return { routeFile: entry.routeFile }
     }
   }
-  return { routeFile: 'unknown' }
+  return { routeFile: null }
 }
