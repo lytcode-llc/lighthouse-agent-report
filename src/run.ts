@@ -1,9 +1,9 @@
 import { spawn } from 'child_process'
-import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs'
-import { resolve, join } from 'path'
+import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync, readdirSync } from 'fs'
+import { resolve, join, dirname } from 'path'
 import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
-import { formatReport } from './format.js'
+import { formatIndex, formatPage } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
 import type { PageResult, AuditEntry, AuditElement } from './types.js'
 
@@ -210,6 +210,18 @@ function readLighthouseReport(urlPath: string, reportsBase: string): LighthouseR
   return JSON.parse(readFileSync(filePath, 'utf8'))
 }
 
+function pruneOldRuns(absOutputDir: string): void {
+  const RUN_DIR_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/
+  const entries = readdirSync(absOutputDir, { withFileTypes: true })
+  const runs = entries
+    .filter((e) => e.isDirectory() && RUN_DIR_RE.test(e.name))
+    .map((e) => e.name)
+    .sort()
+  for (const name of runs.slice(0, -3)) {
+    rmSync(join(absOutputDir, name), { recursive: true })
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Main export
 // ────────────────────────────────────────────────────────────────────────────
@@ -289,24 +301,31 @@ export async function run(opts: RunOptions): Promise<void> {
   }
 
   const generatedAt = new Date().toISOString()
-  const markdown = formatReport(pages, site, generatedAt)
-  const json = JSON.stringify({ generatedAt, site, pages }, null, 2)
 
-  mkdirSync(resolve(process.cwd(), outputDir), { recursive: true })
-
-  const latestMd = resolve(process.cwd(), outputDir, 'latest.md')
-  const latestJson = resolve(process.cwd(), outputDir, 'latest.json')
+  const absOutputDir = resolve(process.cwd(), outputDir)
   const timestamp = generatedAt.replace(/[:.]/g, '-').slice(0, 19)
-  const archiveMd = resolve(process.cwd(), outputDir, `audit-${timestamp}.md`)
+  const runDir = join(absOutputDir, timestamp)
+  const pagesDir = join(runDir, 'pages')
 
-  writeFileSync(latestMd, markdown, 'utf8')
-  writeFileSync(latestJson, json, 'utf8')
-  writeFileSync(archiveMd, markdown, 'utf8')
+  mkdirSync(pagesDir, { recursive: true })
+
+  writeFileSync(join(runDir, 'index.md'), formatIndex(pages, site, generatedAt), 'utf8')
+  writeFileSync(join(runDir, 'index.json'), JSON.stringify({ generatedAt, site, pages }, null, 2), 'utf8')
+
+  for (const page of pages) {
+    const stripped = page.path.replace(/^\//, '').replace(/\/$/, '')
+    const relFile = (stripped === '' ? 'index' : stripped) + '.md'
+    const absFile = join(pagesDir, relFile)
+    mkdirSync(dirname(absFile), { recursive: true })
+    writeFileSync(absFile, formatPage(page, site, generatedAt), 'utf8')
+  }
+
+  pruneOldRuns(absOutputDir)
 
   console.log(`\n── Lighthouse Audit Complete ──`)
   console.log(`Site:   ${site}`)
   console.log(`Pages:  ${pages.length}`)
-  console.log(`Report: ${latestMd}`)
+  console.log(`Report: ${join(runDir, 'index.md')}`)
 
   const failing = pages.filter(
     (p) => !p.error && Object.values(p.scores).some((s) => Math.round(s * 100) < 90)
