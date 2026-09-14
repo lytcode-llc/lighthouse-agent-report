@@ -1,8 +1,6 @@
 import type { FieldData, FieldMetric, CWVCategory } from './types.js'
 
 const PSI_API = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
-// PSI free tier: ~2 requests/second; 600ms keeps us comfortably under
-const RATE_LIMIT_MS = 600
 
 // ────────────────────────────────────────────────────────────────────────────
 // PSI response shapes
@@ -44,8 +42,29 @@ function parseMetric(m: PSIMetric | undefined): FieldMetric | undefined {
   return { p75: m.percentile, category: toCategory(m.category) ?? 'AVERAGE' }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
+// Sliding window rate limiter — enforces N requests per time window
+class RateLimiter {
+  private timestamps: number[] = []
+  private readonly maxRequests: number
+  private readonly windowMs: number
+
+  constructor(maxRequests: number, windowMs: number) {
+    this.maxRequests = maxRequests
+    this.windowMs = windowMs
+  }
+
+  async acquire(): Promise<void> {
+    const now = Date.now()
+    // Evict timestamps outside the window
+    this.timestamps = this.timestamps.filter((t) => now - t < this.windowMs)
+
+    if (this.timestamps.length >= this.maxRequests) {
+      const waitTime = this.windowMs - (now - this.timestamps[0]) + 10
+      await new Promise((r) => setTimeout(r, waitTime))
+    }
+
+    this.timestamps.push(Date.now())
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -127,30 +146,42 @@ export function isLocalhost(site: string): boolean {
 export async function fetchPSIForPages(
   siteUrl: string,
   paths: string[],
-  apiKey: string
+  apiKey: string,
+  concurrency: number = 3
 ): Promise<Map<string, FieldData>> {
   const results = new Map<string, FieldData>()
-  console.log(`\nFetching PSI field data (mobile) for ${paths.length} pages…`)
+  const limiter = new RateLimiter(2, 1000) // 2 requests per second
+  const total = paths.length
 
-  for (let i = 0; i < paths.length; i++) {
-    const path = paths[i]
-    const fullUrl = new URL(path === '/' ? '' : path, siteUrl).href
-    process.stdout.write(`  [${i + 1}/${paths.length}] ${path} … `)
+  console.log(`\nFetching PSI field data (mobile) for ${total} pages…`)
 
-    const { fieldData, error } = await fetchOnePSI(fullUrl, apiKey)
+  let index = 0
 
-    if (error) {
-      process.stdout.write(`skipped (${error})\n`)
-    } else if (fieldData) {
-      const tag = fieldData.isOriginLevel ? `${fieldData.overall} (origin)` : fieldData.overall
-      process.stdout.write(`${tag}\n`)
-      results.set(path, fieldData)
-    }
+  async function worker(): Promise<void> {
+    while (index < total) {
+      const i = index++
+      const path = paths[i]
+      const fullUrl = new URL(path === '/' ? '' : path, siteUrl).href
 
-    if (i < paths.length - 1) {
-      await sleep(RATE_LIMIT_MS)
+      await limiter.acquire()
+
+      process.stdout.write(`  [${i + 1}/${total}] ${path} … `)
+
+      const { fieldData, error } = await fetchOnePSI(fullUrl, apiKey)
+
+      if (error) {
+        process.stdout.write(`skipped (${error})\n`)
+      } else if (fieldData) {
+        const tag = fieldData.isOriginLevel ? `${fieldData.overall} (origin)` : fieldData.overall
+        process.stdout.write(`${tag}\n`)
+        results.set(path, fieldData)
+      }
     }
   }
+
+  const workerCount = Math.min(concurrency, total)
+  const workers = Array.from({ length: workerCount }, () => worker())
+  await Promise.all(workers)
 
   return results
 }

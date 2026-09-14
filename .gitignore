@@ -6,6 +6,8 @@ emdash/
 .claude/
 codacy.yaml
 .opencode/
+.lcm/
+reports/
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md

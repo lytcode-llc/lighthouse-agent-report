@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { formatIndex, formatPage } from './format.js'
-import type { PageResult } from './types.js'
+import { formatPage, needsAttention, pathToFile, computeDivergences } from './format.js'
+import type { PageResult, FieldData, Divergence } from './types.js'
 
 const GENERATED_AT = '2026-01-01T00:00:00.000Z'
 const SITE = 'https://example.com'
@@ -14,155 +14,6 @@ function makePage(overrides: Partial<PageResult> = {}): PageResult {
     ...overrides,
   }
 }
-
-describe('formatIndex', () => {
-  it('includes site and page count in header', () => {
-    const md = formatIndex([makePage()], SITE, GENERATED_AT)
-    expect(md).toContain(SITE)
-    expect(md).toContain('Pages: 1')
-  })
-
-  it('includes summary table; omits divergence section for single page', () => {
-    const md = formatIndex([makePage()], SITE, GENERATED_AT)
-    expect(md).toContain('## Summary Table')
-    expect(md).not.toContain('## Cross-Page Audit Divergence')
-  })
-
-  it('flags lab scores below 90 with ⚠', () => {
-    const page = makePage({ scores: { performance: 0.5, accessibility: 1, bestPractices: 1, seo: 1 } })
-    const md = formatIndex([page], SITE, GENERATED_AT)
-    expect(md).toContain('**50** ⚠')
-  })
-
-  it('does not flag scores at or above 90', () => {
-    const page = makePage({ scores: { performance: 0.9, accessibility: 1, bestPractices: 1, seo: 1 } })
-    const md = formatIndex([page], SITE, GENERATED_AT)
-    expect(md).not.toContain('**90** ⚠')
-    expect(md).toContain('90')
-  })
-
-  it('shows error pages in summary table', () => {
-    const page = makePage({ error: 'Full Lighthouse report not found' })
-    const md = formatIndex([page], SITE, GENERATED_AT)
-    expect(md).toContain('❌ Error')
-  })
-
-  it('puts pages with failing scores in Pages Requiring Attention', () => {
-    const failing = makePage({
-      path: '/slow',
-      scores: { performance: 0.4, accessibility: 1, bestPractices: 1, seo: 1 },
-    })
-    const passing = makePage({ path: '/fast' })
-    const md = formatIndex([failing, passing], SITE, GENERATED_AT)
-    const attentionSection = md.split('## Pages Requiring Attention')[1].split('\n---\n')[0]
-    expect(attentionSection).toContain('/slow')
-    expect(attentionSection).not.toContain('/fast')
-  })
-
-  it('shows "All pages passed" when nothing needs attention', () => {
-    const md = formatIndex([makePage()], SITE, GENERATED_AT)
-    expect(md).toContain('_All pages passed lab thresholds')
-  })
-
-  it('links page paths to individual page files in summary table', () => {
-    const md = formatIndex([makePage({ path: '/contact' })], SITE, GENERATED_AT)
-    expect(md).toContain('[`/contact`](pages/contact.md)')
-  })
-
-  it('links root path to pages/index.md', () => {
-    const md = formatIndex([makePage({ path: '/' })], SITE, GENERATED_AT)
-    expect(md).toContain('pages/index.md')
-  })
-
-  it('truncates slugs longer than the filesystem limit before encoding', () => {
-    const longSlug = 'a'.repeat(300)
-    const md = formatIndex([makePage({ path: `/${longSlug}` })], SITE, GENERATED_AT)
-    const match = md.match(/pages\/([^)]+)\.md/)
-    expect(match).not.toBeNull()
-    // Encoded filename component must fit within 252 bytes (255 - len('.md'))
-    expect(new TextEncoder().encode(match![1]).length).toBeLessThanOrEqual(252)
-  })
-
-  it('shows compact failing score inline in attention section', () => {
-    const page = makePage({
-      path: '/slow',
-      scores: { performance: 0.42, accessibility: 1, bestPractices: 1, seo: 1 },
-    })
-    const md = formatIndex([page], SITE, GENERATED_AT)
-    const attentionSection = md.split('## Pages Requiring Attention')[1].split('\n---\n')[0]
-    expect(attentionSection).toContain('Performance: **42** ⚠')
-  })
-
-
-  it('shows field CWV column in summary when any page has field data', () => {
-    const withFd = makePage({ path: '/a', fieldData: { overall: 'FAST' } })
-    const withoutFd = makePage({ path: '/b' })
-    const md = formatIndex([withFd, withoutFd], SITE, GENERATED_AT)
-    expect(md).toContain('Field CWV')
-  })
-
-  it('handles multiple pages', () => {
-    const pages = [makePage({ path: '/' }), makePage({ path: '/about' }), makePage({ path: '/contact' })]
-    const md = formatIndex(pages, SITE, GENERATED_AT)
-    expect(md).toContain('Pages: 3')
-    expect(md).toContain('`/about`')
-    expect(md).toContain('`/contact`')
-  })
-
-  it('shows Cross-Page Audit Divergence when spread >= 0.2 across 3 pages', () => {
-    const auditId = 'render-blocking-resources'
-    const auditTitle = 'Eliminate render-blocking resources'
-    const pages = [
-      makePage({
-        path: '/',
-        audits: {
-          performance: [{ id: auditId, title: auditTitle, score: 0.9, displayValue: null }],
-          accessibility: [], bestPractices: [], seo: [], opportunities: [],
-        },
-      }),
-      makePage({
-        path: '/slow',
-        audits: {
-          performance: [{ id: auditId, title: auditTitle, score: 0.4, displayValue: null }],
-          accessibility: [], bestPractices: [], seo: [], opportunities: [],
-        },
-      }),
-      makePage({
-        path: '/medium',
-        audits: {
-          performance: [{ id: auditId, title: auditTitle, score: 0.7, displayValue: null }],
-          accessibility: [], bestPractices: [], seo: [], opportunities: [],
-        },
-      }),
-    ]
-    const md = formatIndex(pages, SITE, GENERATED_AT)
-    expect(md).toContain('## Cross-Page Audit Divergence')
-    expect(md).toContain(auditTitle)
-  })
-
-  it('omits Cross-Page Audit Divergence when spread is below 0.2', () => {
-    const auditId = 'render-blocking-resources'
-    const auditTitle = 'Eliminate render-blocking resources'
-    const pages = [
-      makePage({
-        path: '/',
-        audits: {
-          performance: [{ id: auditId, title: auditTitle, score: 0.9, displayValue: null }],
-          accessibility: [], bestPractices: [], seo: [], opportunities: [],
-        },
-      }),
-      makePage({
-        path: '/near',
-        audits: {
-          performance: [{ id: auditId, title: auditTitle, score: 0.85, displayValue: null }],
-          accessibility: [], bestPractices: [], seo: [], opportunities: [],
-        },
-      }),
-    ]
-    const md = formatIndex(pages, SITE, GENERATED_AT)
-    expect(md).not.toContain('## Cross-Page Audit Divergence')
-  })
-})
 
 describe('formatPage', () => {
   it('generates page file with path in header', () => {
@@ -271,5 +122,212 @@ describe('formatPage', () => {
     })
     const md = formatPage(page, SITE, GENERATED_AT)
     expect(md).toContain('origin-level')
+  })
+})
+
+describe('needsAttention', () => {
+  it('returns true when any lab score is below 90', () => {
+    const page = makePage({ scores: { performance: 0.89, accessibility: 1, bestPractices: 1, seo: 1 } })
+    expect(needsAttention(page)).toBe(true)
+  })
+
+  it('returns true when any audit score is below 0.9', () => {
+    const page = makePage({
+      audits: {
+        performance: [{ id: 'render-blocking-resources', title: 'Eliminate render-blocking resources', score: 0.5, displayValue: '0.5 s' }],
+        accessibility: [],
+        bestPractices: [],
+        seo: [],
+        opportunities: [],
+      },
+    })
+    expect(needsAttention(page)).toBe(true)
+  })
+
+  it('returns true when fieldData.overall is SLOW', () => {
+    const page = makePage({ fieldData: { overall: 'SLOW' } as FieldData })
+    expect(needsAttention(page)).toBe(true)
+  })
+
+  it('returns true when fieldData.overall is AVERAGE', () => {
+    const page = makePage({ fieldData: { overall: 'AVERAGE' } as FieldData })
+    expect(needsAttention(page)).toBe(true)
+  })
+
+  it('returns false when all lab scores are >= 90, all audits are >= 0.9, and there is no field data', () => {
+    const page = makePage()
+    expect(needsAttention(page)).toBe(false)
+  })
+
+  it('returns false when page.error is set', () => {
+    const page = makePage({ error: 'Full Lighthouse report not found' })
+    expect(needsAttention(page)).toBe(false)
+  })
+
+  it('returns true for AVERAGE field data even with perfect lab scores', () => {
+    const page = makePage({
+      fieldData: {
+        lcp: { p75: 2800, category: 'AVERAGE' },
+        cls: { p75: 5, category: 'FAST' },
+        inp: { p75: 150, category: 'FAST' },
+        fcp: { p75: 1600, category: 'FAST' },
+        overall: 'AVERAGE',
+      },
+    })
+    expect(needsAttention(page)).toBe(true)
+  })
+})
+
+describe('pathToFile', () => {
+  it('maps root path to pages/index.md', () => {
+    expect(pathToFile('/')).toBe('pages/index.md')
+  })
+
+  it('maps a single-segment path to pages/<segment>.md', () => {
+    expect(pathToFile('/contact')).toBe('pages/contact.md')
+  })
+
+  it('encodes nested path separators', () => {
+    expect(pathToFile('/blog/slug')).toBe('pages/blog%2Fslug.md')
+  })
+
+  it('truncates a long slug to fit 252 bytes before encoding', () => {
+    const longSlug = 'a'.repeat(300)
+    const result = pathToFile(`/${longSlug}`)
+    const encodedName = result.replace(/^pages\//, '').replace(/\.md$/, '')
+    const decoded = decodeURIComponent(encodedName)
+    expect(new TextEncoder().encode(decoded).length).toBeLessThanOrEqual(252)
+  })
+
+  it('encodes multi-byte UTF-8 paths without mid-character truncation', () => {
+    expect(pathToFile('/café')).toBe('pages/caf%C3%A9.md')
+    expect(pathToFile('/日本語')).toBe('pages/%E6%97%A5%E6%9C%AC%E8%AA%9E.md')
+  })
+
+  it('does not split a multi-byte character when truncation is required', () => {
+    // Each Japanese character is 3 bytes; create a path longer than 252 bytes.
+    const longUnicode = '日'.repeat(100)
+    const result = pathToFile(`/${longUnicode}`)
+    const encodedName = result.replace(/^pages\//, '').replace(/\.md$/, '')
+    const decoded = decodeURIComponent(encodedName)
+    const bytes = new TextEncoder().encode(decoded)
+    expect(bytes.length).toBeLessThanOrEqual(252)
+    // Should be a whole number of characters (multiple of 3 bytes).
+    expect(bytes.length % 3).toBe(0)
+  })
+})
+
+describe('computeDivergences', () => {
+  function makeAudits(score: number) {
+    return {
+      performance: [{ id: 'render-blocking-resources', title: 'Eliminate render-blocking resources', score, displayValue: '' }],
+      accessibility: [],
+      bestPractices: [],
+      seo: [],
+      opportunities: [],
+    }
+  }
+
+  it('returns an empty array for a single page', () => {
+    const pages = [makePage({ audits: makeAudits(0.5) })]
+    expect(computeDivergences(pages)).toEqual([])
+  })
+
+  it('returns an empty array when two pages share the same audit score', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.8) }),
+      makePage({ path: '/b', audits: makeAudits(0.8) }),
+    ]
+    expect(computeDivergences(pages)).toEqual([])
+  })
+
+  it('excludes audits whose spread is below 0.2', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.8) }),
+      makePage({ path: '/b', audits: makeAudits(0.95) }),
+    ]
+    expect(computeDivergences(pages)).toEqual([])
+  })
+
+  it('includes audits whose spread is exactly 0.2', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.6) }),
+      makePage({ path: '/b', audits: makeAudits(0.8) }),
+    ]
+    const result = computeDivergences(pages)
+    expect(result).toHaveLength(1)
+    expect(result[0].spread).toBe(20)
+    expect(result[0].lowScore).toBe(60)
+    expect(result[0].highScore).toBe(80)
+  })
+
+  it('excludes audits whose spread is 0.19', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.8) }),
+      makePage({ path: '/b', audits: makeAudits(0.99) }),
+    ]
+    expect(computeDivergences(pages)).toEqual([])
+  })
+
+  it('returns a divergence with integer lowScore, highScore, and spread', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.5) }),
+      makePage({ path: '/b', audits: makeAudits(1.0) }),
+    ]
+    const result = computeDivergences(pages)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      title: 'Eliminate render-blocking resources',
+      lowScore: 50,
+      lowPage: '/a',
+      highScore: 100,
+      highPage: '/b',
+      spread: 50,
+    })
+  })
+
+  it('rounds spread to the nearest integer', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.33) }),
+      makePage({ path: '/b', audits: makeAudits(0.67) }),
+    ]
+    const result = computeDivergences(pages)
+    expect(result[0].spread).toBe(34)
+  })
+
+  it('excludes errored pages from computation', () => {
+    const pages = [
+      makePage({ path: '/a', audits: makeAudits(0.5) }),
+      makePage({ path: '/b', error: 'Failed' }),
+      makePage({ path: '/c', audits: makeAudits(1.0) }),
+    ]
+    const result = computeDivergences(pages)
+    expect(result).toHaveLength(1)
+    expect(result[0].lowPage).toBe('/a')
+    expect(result[0].highPage).toBe('/c')
+  })
+
+  it('sorts results by spread descending', () => {
+    function makePageWithAudit(path: string, id: string, score: number): PageResult {
+      return makePage({
+        path,
+        audits: {
+          performance: [{ id, title: `Audit ${id}`, score, displayValue: '' }],
+          accessibility: [],
+          bestPractices: [],
+          seo: [],
+          opportunities: [],
+        },
+      })
+    }
+
+    const pages = [
+      makePageWithAudit('/a', 'audit-a', 0.5),
+      makePageWithAudit('/b', 'audit-a', 1.0),
+      makePageWithAudit('/c', 'audit-b', 0.6),
+      makePageWithAudit('/d', 'audit-b', 0.8),
+    ]
+    const result = computeDivergences(pages)
+    expect(result.map((d: Divergence) => d.spread)).toEqual([50, 20])
   })
 })

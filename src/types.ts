@@ -55,4 +55,25 @@ export interface PageResult {
   source: PageSource;
   fieldData?: FieldData;
   error?: string;
+  /**
+   * Relative path to a per-page `.md` detail file, e.g. `pages/contact.md`.
+   * Set only for pages that need attention (failing scores, failing audits,
+   * SLOW/AVERAGE field data) or pages that errored during the audit.
+   * Linked from `index.json` so agents can navigate to full markdown details.
+   */
+  markdownFile?: string;
+}
+
+/**
+ * Cross-page audit divergence: an audit whose scores vary significantly
+ * between pages. Computed by `computeDivergences()` and surfaced in
+ * `index.json` to help agents spot site-wide inconsistencies.
+ */
+export interface Divergence {
+  title: string;
+  lowScore: number;     // integer 0-100, lowest score seen
+  lowPage: string;      // page path with the lowest score
+  highScore: number;    // integer 0-100, highest score seen
+  highPage: string;     // page path with the highest score
+  spread: number;       // integer (highScore - lowScore), included when >= 20
 }

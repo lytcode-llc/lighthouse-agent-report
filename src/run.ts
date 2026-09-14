@@ -3,7 +3,7 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync, readdirSync
 import { resolve, join, dirname } from 'path'
 import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
-import { formatIndex, formatPage } from './format.js'
+import { formatPage, needsAttention, pathToFile, computeDivergences } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
 import type { PageResult, AuditEntry, AuditElement } from './types.js'
 
@@ -12,6 +12,7 @@ interface RunOptions {
   config?: string
   out?: string
   psiKey?: string
+  psiConcurrency?: number
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -289,7 +290,7 @@ export async function run(opts: RunOptions): Promise<void> {
   // PSI field data — only for non-localhost sites
   if (psiKey && !isLocalhost(site)) {
     const paths = pages.filter((p) => !p.error).map((p) => p.path)
-    const fieldDataMap = await fetchPSIForPages(site, paths, psiKey)
+    const fieldDataMap = await fetchPSIForPages(site, paths, psiKey, opts.psiConcurrency)
     for (const page of pages) {
       const fd = fieldDataMap.get(page.path)
       if (fd) page.fieldData = fd
@@ -305,27 +306,75 @@ export async function run(opts: RunOptions): Promise<void> {
   const absOutputDir = resolve(process.cwd(), outputDir)
   const timestamp = generatedAt.replace(/[:.]/g, '-').slice(0, 19)
   const runDir = join(absOutputDir, timestamp)
-  const pagesDir = join(runDir, 'pages')
 
-  mkdirSync(pagesDir, { recursive: true })
+  mkdirSync(runDir, { recursive: true })
 
-  writeFileSync(join(runDir, 'index.md'), formatIndex(pages, site, generatedAt), 'utf8')
-  writeFileSync(join(runDir, 'index.json'), JSON.stringify({ generatedAt, site, pages }, null, 2), 'utf8')
+  const divergences = computeDivergences(pages)
+  const pageCount = pages.length
 
+  // Per-page markdown — only for failing or errored pages (links from JSON)
   for (const page of pages) {
-    const stripped = page.path.replace(/^\//, '').replace(/\/$/, '')
-    const relFile = (stripped === '' ? 'index' : stripped) + '.md'
-    const absFile = join(pagesDir, relFile)
+    if (!needsAttention(page) && !page.error) continue
+
+    const relFile = pathToFile(page.path)
+    const absFile = join(runDir, relFile)
     mkdirSync(dirname(absFile), { recursive: true })
     writeFileSync(absFile, formatPage(page, site, generatedAt), 'utf8')
+    page.markdownFile = relFile
+  }
+
+  // JSON report — chunk if over 10,000 lines
+  const CHUNK_THRESHOLD = 10_000
+  // Metadata lines per chunk: {, generatedAt, site, pageCount, divergences, pages, }
+  const ENVELOPE_LINES = 7
+  const divergencesJson = JSON.stringify(divergences, null, 2)
+  const divergencesLineCount = divergencesJson.split('\n').length
+  const reportEnvelope = { generatedAt, site, pageCount, divergences, pages }
+  const indexJson = JSON.stringify(reportEnvelope, null, 2)
+  const lineCount = indexJson.split('\n').length
+
+  let manifestPath: string | undefined
+
+  if (lineCount > CHUNK_THRESHOLD) {
+    const avgLinesPerPage = lineCount / pageCount
+    const budget = CHUNK_THRESHOLD - ENVELOPE_LINES - divergencesLineCount
+    const chunkSize = Math.max(1, Math.floor(budget / avgLinesPerPage))
+    const chunks: Array<{ file: string; startPage: number; endPage: number; pageCount: number }> = []
+
+    for (let i = 0; i < pageCount; i += chunkSize) {
+      const chunkPages = pages.slice(i, i + chunkSize)
+      const chunkFile = `index.json.${chunks.length + 1}`
+      writeFileSync(join(runDir, chunkFile), JSON.stringify({
+        generatedAt, site, pageCount, divergences, pages: chunkPages,
+      }, null, 2), 'utf8')
+      chunks.push({
+        file: chunkFile,
+        startPage: i,
+        endPage: Math.min(i + chunkSize - 1, pageCount - 1),
+        pageCount: chunkPages.length,
+      })
+    }
+
+    manifestPath = join(runDir, 'index.json.manifest.json')
+    writeFileSync(manifestPath, JSON.stringify({
+      version: '1.0',
+      generatedAt,
+      site,
+      pageCount,
+      chunked: true,
+      chunks,
+    }, null, 2), 'utf8')
+    console.log(`\nJSON report chunked into ${chunks.length} files (${lineCount} lines > ${CHUNK_THRESHOLD} limit)`)
+  } else {
+    writeFileSync(join(runDir, 'index.json'), indexJson, 'utf8')
   }
 
   pruneOldRuns(absOutputDir)
 
   console.log(`\n── Lighthouse Audit Complete ──`)
   console.log(`Site:   ${site}`)
-  console.log(`Pages:  ${pages.length}`)
-  console.log(`Report: ${join(runDir, 'index.md')}`)
+  console.log(`Pages:  ${pageCount}`)
+  console.log(`Report: ${manifestPath ?? join(runDir, 'index.json')}`)
 
   const failing = pages.filter(
     (p) => !p.error && Object.values(p.scores).some((s) => Math.round(s * 100) < 90)

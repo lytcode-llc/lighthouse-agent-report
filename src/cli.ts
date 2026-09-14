@@ -7,6 +7,7 @@ const { values } = parseArgs({
     config:  { type: 'string' },
     out:     { type: 'string' },
     'psi-key': { type: 'string' },
+    'psi-concurrency': { type: 'string' },
     help:    { type: 'boolean', short: 'h' },
   },
   allowPositionals: false,
@@ -25,6 +26,8 @@ Options:
   --out       Output directory (default: reports/lighthouse)
   --psi-key   PageSpeed Insights API key for real-user field data
               (can also be set via PSI_API_KEY env var)
+  --psi-concurrency  Number of concurrent PSI requests (default: 3, max: 16)
+              Free tier safe: sliding window limits to 2 req/sec
   --help      Show this help
 
 Examples:
@@ -41,6 +44,7 @@ run({
   config: values.config,
   out: values.out,
   psiKey: values['psi-key'],
+  psiConcurrency: values['psi-concurrency'] ? parseInt(values['psi-concurrency'], 10) : undefined,
 }).catch((err: Error) => {
   console.error(`\nError: ${err.message}`)
   process.exit(1)

@@ -1,6 +1,6 @@
 {
   "name": "@lytcode/lighthouse-agent-report",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Runs Lighthouse across your site and generates an agent-readable markdown report",
   "type": "module",
   "bin": {
@@ -9,13 +9,15 @@
   "main": "./dist/run.js",
   "types": "./dist/types.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@unlighthouse/cli": "^0.14"

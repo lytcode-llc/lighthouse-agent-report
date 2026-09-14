@@ -1,4 +1,4 @@
-import type { PageResult, AuditEntry, AuditElement, FieldData, CWVCategory } from './types.js'
+import type { PageResult, AuditEntry, AuditElement, FieldData, CWVCategory, Divergence } from './types.js'
 
 const LAB_THRESHOLD = 90
 
@@ -113,7 +113,13 @@ function hasFailingAuditEntries(page: PageResult): boolean {
   return all.some((a) => a.score !== null && a.score < 0.9)
 }
 
-function needsAttention(page: PageResult): boolean {
+/**
+ * Returns true when a page should receive a per-page `.md` detail file:
+ * any lab score < 90, any audit score < 0.9, or field data is SLOW/AVERAGE.
+ * Pages with an `error` are handled separately by the caller and are
+ * considered "errored" rather than "needs attention".
+ */
+export function needsAttention(page: PageResult): boolean {
   if (page.error) return false
   return (
     hasFailingLabScores(page) ||
@@ -131,7 +137,13 @@ function truncateToBytes(str: string, maxBytes: number): string {
   return new TextDecoder().decode(encoded.slice(0, end))
 }
 
-function pathToFile(path: string): string {
+/**
+ * Maps a URL path to a per-page markdown filename, URL-encoding special
+ * characters (e.g. `/blog/slug` → `pages/blog%2Fslug.md`) and truncating
+ * the raw slug to 252 bytes before encoding to avoid mid-percent cuts and
+ * most filesystem path-length limits.
+ */
+export function pathToFile(path: string): string {
   const stripped = path.replace(/^\//, '').replace(/\/$/, '')
   const name = stripped === '' ? 'index' : stripped
   // Truncate the raw slug before encoding so we never cut mid-percent-sequence.
@@ -140,91 +152,18 @@ function pathToFile(path: string): string {
   return `pages/${encodeURIComponent(truncated)}.md`
 }
 
-function failingScoresSummary(page: PageResult): string {
-  const parts: string[] = []
-  const { performance, accessibility, bestPractices, seo } = page.scores
-  if (Math.round(performance * 100) < LAB_THRESHOLD) parts.push(`Performance: **${Math.round(performance * 100)}** ⚠`)
-  if (Math.round(accessibility * 100) < LAB_THRESHOLD) parts.push(`Accessibility: **${Math.round(accessibility * 100)}** ⚠`)
-  if (Math.round(bestPractices * 100) < LAB_THRESHOLD) parts.push(`Best Practices: **${Math.round(bestPractices * 100)}** ⚠`)
-  if (Math.round(seo * 100) < LAB_THRESHOLD) parts.push(`SEO: **${Math.round(seo * 100)}** ⚠`)
-  return parts.join(', ')
-}
-
 // ────────────────────────────────────────────────────────────────────────────
-// Index
+// Cross-page divergence computation
 // ────────────────────────────────────────────────────────────────────────────
 
-export function formatIndex(pages: PageResult[], site: string, generatedAt: string): string {
-  const lines: string[] = []
-  const hasAnyFieldData = pages.some((p) => p.fieldData)
-
-  lines.push(`# Lighthouse Audit Report`)
-  lines.push(`Generated: ${generatedAt} | Site: ${site} | Pages: ${pages.length}`)
-  if (hasAnyFieldData) {
-    lines.push(`Lab data: unlighthouse (desktop simulation) | Field data: PageSpeed Insights (real users, mobile)`)
-  }
-  lines.push(``)
-
-  // ── Summary Table ──────────────────────────────────────────────────────────
-  lines.push(`## Summary Table`)
-  lines.push(``)
-
-  const fieldHeader = hasAnyFieldData ? ' Field CWV |' : ''
-  const fieldDivider = hasAnyFieldData ? ' ---------- |' : ''
-  lines.push(`| Page | Performance | Accessibility | Best Practices | SEO |${fieldHeader}`)
-  lines.push(`|------|-------------|---------------|----------------|-----|${fieldDivider}`)
-
-  for (const page of pages) {
-    if (page.error) {
-      const fd = hasAnyFieldData ? ' — |' : ''
-      lines.push(`| [\`${page.path}\`](${pathToFile(page.path)}) | ❌ Error | — | — | — |${fd}`)
-      continue
-    }
-    const { performance, accessibility, bestPractices, seo } = page.scores
-    const fieldCol = hasAnyFieldData
-      ? ` ${page.fieldData ? cwvBadge(page.fieldData.overall) : '—'} |`
-      : ''
-    lines.push(
-      `| [\`${page.path}\`](${pathToFile(page.path)}) | ${labScore(performance)} | ${labScore(accessibility)} | ${labScore(bestPractices)} | ${labScore(seo)} |${fieldCol}`
-    )
-  }
-
-  lines.push(``)
-  lines.push(`> Lab scores below ${LAB_THRESHOLD} flagged with ⚠ | Field CWV: FAST ✓ AVERAGE ⚠ SLOW ✗`)
-  lines.push(``)
-  lines.push(`---`)
-  lines.push(``)
-
-  // ── Pages Requiring Attention ──────────────────────────────────────────────
-  const attention = pages.filter(needsAttention)
-
-  lines.push(`## Pages Requiring Attention`)
-  lines.push(``)
-
-  if (attention.length === 0) {
-    lines.push(`_All pages passed lab thresholds${hasAnyFieldData ? ' and field data checks' : ''}._`)
-  } else {
-    for (const page of attention) {
-      const file = pathToFile(page.path)
-      const scores = failingScoresSummary(page)
-      lines.push(`- [\`${page.path}\`](${file})${scores ? ` — ${scores}` : ''}`)
-    }
-  }
-
-  lines.push(``)
-  lines.push(`---`)
-  lines.push(``)
-
-  // ── Cross-Page Audit Divergence ────────────────────────────────────────────
-  const divergenceSection = crossPageDivergenceSection(pages)
-  if (divergenceSection) {
-    lines.push(divergenceSection)
-  }
-
-  return lines.join('\n')
-}
-
-function crossPageDivergenceSection(pages: PageResult[]): string {
+/**
+ * Finds audits whose scores vary significantly between pages (spread >= 0.2,
+ * i.e. 20 percentage points). For each divergent audit, returns the pages
+ * with the highest and lowest scores, all integer fields ×100. Results are
+ * sorted by spread descending. Errored pages are excluded from the
+ * computation.
+ */
+export function computeDivergences(pages: PageResult[]): Divergence[] {
   const auditScores = new Map<string, Array<{ score: number; title: string; path: string }>>()
 
   for (const page of pages) {
@@ -245,14 +184,7 @@ function crossPageDivergenceSection(pages: PageResult[]): string {
     }
   }
 
-  const divergences: Array<{
-    title: string
-    lowScore: number
-    lowPage: string
-    highScore: number
-    highPage: string
-    spread: number
-  }> = []
+  const divergences: Divergence[] = []
 
   for (const [, entries] of auditScores) {
     if (entries.length < 2) continue
@@ -267,33 +199,25 @@ function crossPageDivergenceSection(pages: PageResult[]): string {
         lowPage: low.path,
         highScore: Math.round(high.score * 100),
         highPage: high.path,
-        spread,
+        spread: Math.round(spread * 100),
       })
     }
   }
 
-  if (divergences.length === 0) return ''
-
   divergences.sort((a, b) => b.spread - a.spread)
-  const capped = divergences.slice(0, 20)
-
-  const lines: string[] = []
-  lines.push(`## Cross-Page Audit Divergence`)
-  lines.push(``)
-  lines.push(`| Audit | Low Score | Low Page | High Score | High Page |`)
-  lines.push(`|-------|-----------|----------|------------|-----------|`)
-  for (const d of capped) {
-    lines.push(`| ${d.title} | ${d.lowScore} | \`${d.lowPage}\` | ${d.highScore} | \`${d.highPage}\` |`)
-  }
-  lines.push(``)
-
-  return lines.join('\n')
+  return divergences
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Per-page file
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Renders a single `PageResult` as a full markdown document — H1 title with
+ * the path, a metadata line with timestamp/site/URL, then route attribution,
+ * lab scores, optional Field CWV line, optional field data table, and one
+ * table per audit category plus opportunities.
+ */
 export function formatPage(page: PageResult, site: string, generatedAt: string): string {
   const lines: string[] = []
   lines.push(`# Lighthouse Audit — ${page.path}`)

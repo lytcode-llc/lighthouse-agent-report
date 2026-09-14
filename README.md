@@ -76,6 +76,7 @@ lighthouse-agent-report --site https://example.com --out ./my-reports
 |------|-------------|---------|
 | `--site` | URL to audit (required) | — |
 | `--psi-key` | PageSpeed Insights API key for real-user field data | `PSI_API_KEY` env var |
+| `--psi-concurrency` | Concurrent PSI requests, 1–16 (free tier safe: sliding window at 2 req/sec) | `3` |
 | `--out` | Output directory | value from config, or `reports/lighthouse` |
 | `--config` | Path to an optional config file | `lighthouse-audit.config.js` |
 
@@ -124,59 +125,87 @@ Get a free API key at [console.cloud.google.com](https://console.cloud.google.co
 
 See [docs/example-report.md](docs/example-report.md) for a full example of what a generated report looks like.
 
-The tool writes to your output directory:
+The tool writes to your output directory with a timestamped run folder:
 
-- `latest.md` — agent-readable markdown with summary table + issue breakdown
-- `latest.json` — structured JSON for programmatic use
-- `audit-<timestamp>.md` — archived copy of each run
-
-### Report format
-
-```markdown
-# Lighthouse Audit Report
-Generated: 2026-03-03T14:22:00Z | Site: https://example.com | Pages: 18
-Lab data: unlighthouse (desktop simulation) | Field data: PageSpeed Insights (real users, mobile)
-
-## Summary Table
-
-| Page | Performance | Accessibility | Best Practices | SEO | Field CWV |
-|------|-------------|---------------|----------------|-----|-----------|
-| `/` | 94 | 100 | 96 | 100 | FAST ✓ |
-| `/contact` | **78** ⚠ | 95 | **88** ⚠ | 92 | AVERAGE ⚠ |
-
-> Lab scores below 90 flagged with ⚠ | Field CWV: FAST ✓ AVERAGE ⚠ SLOW ✗
-
----
-
-## Pages Requiring Attention
-
-### `/contact`
-**Route:** `app/contact/page.tsx`
-**Lab Scores:** Performance: 78 | Accessibility: 95 | Best Practices: 88 | SEO: 92
-**Field CWV:** AVERAGE ⚠
-
-#### Field Data — Real Users, Mobile P75
-| Metric | P75 | Rating |
-|--------|-----|--------|
-| LCP    | 3.1s | AVERAGE ⚠ |
-| CLS    | 0.04 | FAST ✓ |
-| INP    | 180ms | FAST ✓ |
-
-#### Performance
-| Audit | Score | Value |
-|-------|-------|-------|
-| First Contentful Paint | ⚠ 64 | 2.6 s |
-| Largest Contentful Paint | ⚠ 42 | 4.8 s |
-| Total Blocking Time | ✓ 100 | 0 ms |
-...
-
-#### Opportunities & Diagnostics
-| Audit | Score | Value |
-|-------|-------|-------|
-| Improve image delivery | ⚠ 0 | Est savings of 95 KiB |
-| Reduce unused JavaScript | ⚠ 0 | Est savings of 118 KiB |
-...
 ```
+reports/lighthouse/
+└── 2026-03-03T14-22-00/
+    ├── index.json              # Primary report (agent-readable)
+    ├── index.json.manifest.json # Present only when chunked (see Large sites)
+    ├── pages/
+    │   ├── contact.md          # Per-page detail (only for failing/errored pages)
+    │   └── blog%2Fgetting-started.md
+    └── ...
+```
+
+### JSON report (`index.json`)
+
+The JSON report is the primary output. It contains everything an agent needs to identify and fix issues:
+
+```json
+{
+  "generatedAt": "2026-03-03T14:22:00.000Z",
+  "site": "https://example.com",
+  "pageCount": 4,
+  "divergences": [
+    {
+      "title": "First Contentful Paint",
+      "lowScore": 49,
+      "lowPage": "/blog/getting-started",
+      "highScore": 100,
+      "highPage": "/about",
+      "spread": 51
+    }
+  ],
+  "pages": [
+    {
+      "path": "/contact",
+      "source": { "routeFile": "app/contact/page.tsx" },
+      "scores": { "performance": 0.78, "accessibility": 0.82, "bestPractices": 0.88, "seo": 0.92 },
+      "audits": {
+        "performance": [{ "id": "first-contentful-paint", "title": "First Contentful Paint", "score": 0.64, "displayValue": "2.6 s" }],
+        "accessibility": [{ "id": "label", "title": "Form elements have associated labels", "score": 0, "displayValue": "2 elements", "elements": [{ "selector": "input.email-field" }] }],
+        "bestPractices": [],
+        "seo": [],
+        "opportunities": [{ "id": "unused-javascript", "title": "Reduce unused JavaScript", "score": 0, "displayValue": "Est savings of 118 KiB" }]
+      },
+      "markdownFile": "pages/contact.md"
+    }
+  ]
+}
+```
+
+Key fields:
+- **`divergences`** — Audits that vary significantly across pages (spread ≥ 20). Helps agents find site-wide inconsistencies.
+- **`scores`** — Raw Lighthouse scores (0–1). Multiply by 100 for display.
+- **`audits`** — All audited items, grouped by category. Each audit has `id`, `title`, `score`, `displayValue`, and optional `elements` (affected DOM nodes).
+- **`markdownFile`** — Present only on pages with failing scores or errors. Points to a `.md` file with full audit details and human-readable explanations.
+- **`source.routeFile`** — The framework source file responsible for this page (e.g., `app/contact/page.tsx`).
+- **`fieldData`** — Real-user Core Web Vitals from PageSpeed Insights (only when `--psi-key` is provided).
+
+### Chunking
+
+For large sites, `index.json` is automatically split when it exceeds **10,000 lines**. Each chunk contains a subset of pages plus the full metadata envelope. A manifest file is written alongside:
+
+```json
+{
+  "version": "1.0",
+  "generatedAt": "...",
+  "site": "...",
+  "pageCount": 200,
+  "chunked": true,
+  "chunks": [
+    { "file": "index.json.1", "startPage": 0, "endPage": 59, "pageCount": 60 },
+    { "file": "index.json.2", "startPage": 60, "endPage": 119, "pageCount": 60 }
+  ]
+}
+```
+
+### Per-page markdown
+
+Individual `.md` files are written **only for pages that need attention** (failing scores, audits with score < 0.9, SLOW/AVERAGE field data, or Lighthouse errors). Passing pages have no `.md` file — their JSON data is sufficient.
+
+See [docs/example-report.md](docs/example-report.md) for a complete per-page markdown example.
 
 ## Large sites
 
