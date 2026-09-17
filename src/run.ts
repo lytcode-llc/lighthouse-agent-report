@@ -7,6 +7,7 @@ import { buildRouteMap, resolveSource } from './source-map.js'
 import { formatPage, needsAttention, pathToFile, computeDivergences } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
 import { hasWorkspaceMarkers, promptWorkspace, saveRecentDir } from './workspace.js'
+import { hasUnlighthouseConfig, promptScanConfig, writeUnlighthouseConfig } from './config-prompt.js'
 import type { PageResult, AuditEntry, AuditElement } from './types.js'
 
 interface RunOptions {
@@ -244,6 +245,17 @@ export async function run(opts: RunOptions): Promise<void> {
   } else if (!hasWorkspaceMarkers(process.cwd())) {
     const chosen = await promptWorkspace()
     if (chosen) process.chdir(chosen)
+  }
+
+  // ── Scan config onboarding ───────────────────────────────────────────────
+  if (!hasUnlighthouseConfig(process.cwd())) {
+    const action = await promptScanConfig()
+    if (action.type === 'advanced') {
+      writeUnlighthouseConfig(process.cwd(), action)
+      console.log('\nunlighthouse.config.ts created — edit it, then re-run lighthouse-agent-report.')
+      process.exit(0)
+    }
+    writeUnlighthouseConfig(process.cwd(), action)
   }
 
   const config = await loadConfig(opts.config)

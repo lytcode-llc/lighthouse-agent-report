@@ -78,6 +78,12 @@ vi.mock('./workspace.js', () => ({
   saveRecentDir: vi.fn(),
 }))
 
+vi.mock('./config-prompt.js', () => ({
+  hasUnlighthouseConfig: vi.fn().mockReturnValue(true),
+  promptScanConfig: vi.fn(),
+  writeUnlighthouseConfig: vi.fn(),
+}))
+
 vi.mock('@clack/prompts', () => ({
   confirm: vi.fn().mockResolvedValue(true),
   isCancel: vi.fn().mockReturnValue(false),
