@@ -20,7 +20,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
-    "@unlighthouse/cli": "^0.14"
+    "@unlighthouse/cli": "^0.18.0"
   },
   "devDependencies": {
     "typescript": "^5",
@@ -29,7 +29,7 @@
     "vitest": "^3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.18.0"
   },
   "license": "MIT",
   "author": "Lytcode LLC",
