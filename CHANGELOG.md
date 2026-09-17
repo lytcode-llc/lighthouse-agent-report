@@ -2,6 +2,29 @@
 
 All notable changes to `@lytcode/lighthouse-agent-report` are documented here.
 
+## [3.0.0] — 2026-09-17
+
+### Added
+
+- Workspace selection for global installs: when no project markers found, an interactive prompt lets you choose a recent dir, create a new project, or use the current directory (via `@clack/prompts`)
+- `--cwd <dir>` flag: explicitly set the working directory (relative paths resolved before chdir)
+- Recents store: `~/.config/lighthouse-agent-report/workspaces.json` remembers up to 10 recently used directories
+- PSI opt-in: PSI fetch is now off by default; use `--psi` to force with env key, `--psi-key KEY` for explicit key, or confirm the prompt when `PSI_API_KEY` is set in an interactive session
+- Scan-config onboarding: when `unlighthouse.config.ts` doesn't exist, a one-time prompt offers recommended defaults, custom settings (samples, dynamic sampling, cache), or advanced template creation
+- `hasWorkspaceMarkers()`, `hasUnlighthouseConfig()` exported for downstream use
+
+### Changed
+
+- **BREAKING**: `engines.node` raised from `>=18` to `>=22.18.0` — mirrors unlighthouse 0.18.0's own floor; Node 18 and 20 are EOL
+- **BREAKING**: `@unlighthouse/cli` upgraded from `^0.14` to `^0.18.0` — cheerio/whatwg-encoding transitive dependency eliminated entirely
+- **BREAKING**: `PSI_API_KEY` env var no longer auto-runs PSI — user must confirm in TTY, or pass `--psi` / `--psi-key` to force
+- Workspace marker list: `package.json`, `lighthouse-audit.config.js`, `unlighthouse.config.ts`, `reports/`, `.unlighthouse/`
+
+### Performance
+
+- unlighthouse 0.18.0 includes internal Lighthouse 11→13.4 upgrade and puppeteer-core 23→25 bump
+- whatwg-encoding / @exodus/bytes deprecation warning eliminated at the source (cheerio removed)
+
 ## [2.0.0] — 2026-08-28
 
 ### Added

@@ -38,12 +38,14 @@ This is the recommended approach for Next.js projects. The package version is pi
 npm install -g @lytcode/lighthouse-agent-report
 ```
 
-Then run from your project root (the package reads your `app/` directory and writes output relative to wherever you run it):
+Then run from your project root:
 
 ```bash
 cd my-project
 lighthouse-agent-report --site http://localhost:3000
 ```
+
+When run globally without `--cwd`, the tool detects whether your current directory contains project files (`package.json`, `lighthouse-audit.config.js`, etc.). If not, an interactive prompt lets you choose a recent workspace, create a new project, or use the current directory.
 
 Use this if you want a single installation that works across multiple projects without adding it to each one's `package.json`. Note that upgrades affect all projects at once, with no per-project version pinning.
 
@@ -75,6 +77,8 @@ lighthouse-agent-report --site https://example.com --out ./my-reports
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--site` | URL to audit (required) | — |
+| `--cwd` | Working directory (prompts if no project detected) | auto-detect |
+| `--psi` | Force PageSpeed Insights fetch with env var key | off |
 | `--psi-key` | PageSpeed Insights API key for real-user field data | `PSI_API_KEY` env var |
 | `--psi-concurrency` | Concurrent PSI requests, 1–16 (free tier safe: sliding window at 2 req/sec) | `3` |
 | `--out` | Output directory | value from config, or `reports/lighthouse` |
@@ -95,14 +99,23 @@ export default {
 
 Pass a [PageSpeed Insights API key](https://developers.google.com/speed/docs/insights/v5/get-started) to include real-user Core Web Vitals (LCP, CLS, INP) alongside lab scores. Field data is sourced from Chrome's user experience dataset and reflects actual visitors — it can differ significantly from simulated lab scores.
 
+PSI is **off by default** — the tool no longer auto-runs PSI from the `PSI_API_KEY` env var alone. You must explicitly opt in:
+
 ```bash
-# Via flag
+# Explicit key (no prompt)
 lighthouse-agent-report --site https://example.com --psi-key YOUR_KEY
 
-# Via environment variable (recommended — keep keys out of scripts)
+# Force with env var key (no prompt)
+export PSI_API_KEY=YOUR_KEY
+lighthouse-agent-report --site https://example.com --psi
+
+# Env var + interactive prompt
 export PSI_API_KEY=YOUR_KEY
 lighthouse-agent-report --site https://example.com
+# → "Fetch real-user field data via PageSpeed Insights? (Y/n)"
 ```
+
+In CI or non-interactive contexts, use `--psi` to skip the prompt. Without `--psi` or `--psi-key`, PSI is silently skipped.
 
 Field data is automatically skipped for localhost URLs (PSI requires a publicly accessible site). If a URL has insufficient traffic in Chrome's dataset, the package falls back to origin-level data and notes it in the report.
 
