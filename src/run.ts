@@ -5,12 +5,14 @@ import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
 import { formatPage, needsAttention, pathToFile, computeDivergences } from './format.js'
 import { fetchPSIForPages, isLocalhost } from './psi.js'
+import { hasWorkspaceMarkers, promptWorkspace, saveRecentDir } from './workspace.js'
 import type { PageResult, AuditEntry, AuditElement } from './types.js'
 
 interface RunOptions {
   site?: string
   config?: string
   out?: string
+  cwd?: string
   psiKey?: string
   psiConcurrency?: number
 }
@@ -228,6 +230,20 @@ function pruneOldRuns(absOutputDir: string): void {
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function run(opts: RunOptions): Promise<void> {
+  // ── Workspace selection ──────────────────────────────────────────────────
+  if (opts.cwd) {
+    if (!hasWorkspaceMarkers(opts.cwd)) {
+      console.error(
+        `\nNo workspace markers found in ${opts.cwd}. Expected one of: package.json, lighthouse-audit.config.js, unlighthouse.config.ts, reports/, .unlighthouse/\n`
+      )
+      process.exit(1)
+    }
+    process.chdir(opts.cwd)
+  } else if (!hasWorkspaceMarkers(process.cwd())) {
+    const chosen = await promptWorkspace()
+    if (chosen) process.chdir(chosen)
+  }
+
   const config = await loadConfig(opts.config)
   const outputDir = opts.out ?? config.output ?? 'reports/lighthouse'
   const psiKey = opts.psiKey ?? process.env.PSI_API_KEY
@@ -391,4 +407,7 @@ export async function run(opts: RunOptions): Promise<void> {
   } else {
     console.log(`\nAll pages scored ≥ 90 (lab). ✓`)
   }
+
+  // ── Persist workspace for future runs ────────────────────────────────────
+  saveRecentDir(process.cwd())
 }

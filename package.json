@@ -20,12 +20,13 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
+    "@clack/prompts": "^1.8.1",
     "@unlighthouse/cli": "^0.18.0"
   },
   "devDependencies": {
-    "typescript": "^5",
     "tsup": "^8",
     "tsx": "^4",
+    "typescript": "^5",
     "vitest": "^3"
   },
   "engines": {

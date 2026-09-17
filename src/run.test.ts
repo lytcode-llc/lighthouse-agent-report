@@ -72,6 +72,12 @@ vi.mock('./psi.js', () => ({
   isLocalhost: vi.fn().mockReturnValue(false),
 }))
 
+vi.mock('./workspace.js', () => ({
+  hasWorkspaceMarkers: vi.fn().mockReturnValue(true),
+  promptWorkspace: vi.fn(),
+  saveRecentDir: vi.fn(),
+}))
+
 function makeRoutes(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     path: `/page-${i}`,
