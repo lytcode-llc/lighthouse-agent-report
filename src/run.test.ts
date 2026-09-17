@@ -78,6 +78,11 @@ vi.mock('./workspace.js', () => ({
   saveRecentDir: vi.fn(),
 }))
 
+vi.mock('@clack/prompts', () => ({
+  confirm: vi.fn().mockResolvedValue(true),
+  isCancel: vi.fn().mockReturnValue(false),
+}))
+
 function makeRoutes(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     path: `/page-${i}`,

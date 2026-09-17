@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync, readdirSync } from 'fs'
 import { resolve, join, dirname } from 'path'
+import * as p from '@clack/prompts'
 import { loadConfig } from './config.js'
 import { buildRouteMap, resolveSource } from './source-map.js'
 import { formatPage, needsAttention, pathToFile, computeDivergences } from './format.js'
@@ -13,6 +14,7 @@ interface RunOptions {
   config?: string
   out?: string
   cwd?: string
+  psi?: boolean
   psiKey?: string
   psiConcurrency?: number
 }
@@ -246,7 +248,6 @@ export async function run(opts: RunOptions): Promise<void> {
 
   const config = await loadConfig(opts.config)
   const outputDir = opts.out ?? config.output ?? 'reports/lighthouse'
-  const psiKey = opts.psiKey ?? process.env.PSI_API_KEY
   const site = opts.site ?? config.site
 
   if (!site) {
@@ -303,18 +304,43 @@ export async function run(opts: RunOptions): Promise<void> {
     }
   })
 
-  // PSI field data — only for non-localhost sites
-  if (psiKey && !isLocalhost(site)) {
+  // PSI field data — opt-in with --psi, --psi-key, or env var + prompt
+  const envKey = process.env.PSI_API_KEY
+  const hasExplicitKey = !!opts.psiKey
+  const hasFlag = !!opts.psi
+
+  if (isLocalhost(site)) {
+    // skip — localhost not supported
+  } else if (hasExplicitKey || hasFlag) {
+    // --psi or --psi-key: force on, no prompt
+    const key = opts.psiKey ?? envKey
+    if (!key) {
+      throw new Error('--psi requires a key. Pass --psi-key or set PSI_API_KEY.')
+    }
     const paths = pages.filter((p) => !p.error).map((p) => p.path)
-    const fieldDataMap = await fetchPSIForPages(site, paths, psiKey, opts.psiConcurrency)
+    const fieldDataMap = await fetchPSIForPages(site, paths, key, opts.psiConcurrency)
     for (const page of pages) {
       const fd = fieldDataMap.get(page.path)
       if (fd) page.fieldData = fd
     }
-  } else if (psiKey && isLocalhost(site)) {
-    console.log('\nSkipping PSI field data — not available for localhost.')
+  } else if (envKey && process.stdout.isTTY) {
+    // Env key + TTY: prompt
+    const confirm = await p.confirm({
+      message: 'Fetch real-user field data via PageSpeed Insights?',
+    })
+    if (!p.isCancel(confirm) && confirm) {
+      const paths = pages.filter((p) => !p.error).map((p) => p.path)
+      const fieldDataMap = await fetchPSIForPages(site, paths, envKey, opts.psiConcurrency)
+      for (const page of pages) {
+        const fd = fieldDataMap.get(page.path)
+        if (fd) page.fieldData = fd
+      }
+    }
+  } else if (envKey) {
+    // Env key + non-TTY: skip silently
   } else {
-    console.log('\nTip: Pass --psi-key or set PSI_API_KEY to include real-user field data.')
+    // No key: tip
+    console.log('\nTip: Set PSI_API_KEY or pass --psi-key to include real-user field data.')
   }
 
   const generatedAt = new Date().toISOString()

@@ -8,6 +8,7 @@ const { values } = parseArgs({
     config:  { type: 'string' },
     out:     { type: 'string' },
     cwd:     { type: 'string' },
+    psi:     { type: 'boolean' },
     'psi-key': { type: 'string' },
     'psi-concurrency': { type: 'string' },
     help:    { type: 'boolean', short: 'h' },
@@ -27,6 +28,7 @@ Options:
   --config    Path to config file (default: lighthouse-audit.config.js)
   --out       Output directory (default: reports/lighthouse)
   --cwd       Working directory (default: prompts if no workspace markers detected)
+  --psi       Force PageSpeed Insights fetch (skip prompt)
   --psi-key   PageSpeed Insights API key for real-user field data
               (can also be set via PSI_API_KEY env var)
   --psi-concurrency  Number of concurrent PSI requests (default: 3, max: 16)
@@ -38,6 +40,7 @@ Examples:
   lighthouse-agent-report                              # uses site from config
   lighthouse-agent-report --cwd /path/to/project       # explicit working directory
   lighthouse-agent-report --psi-key YOUR_KEY           # uses site from config
+  lighthouse-agent-report --psi                         # force PSI with env var key
   PSI_API_KEY=YOUR_KEY lighthouse-agent-report --site https://example.com
   `)
   process.exit(0)
@@ -54,6 +57,7 @@ run({
   config: absConfig,
   out: absOut,
   cwd: absCwd,
+  psi: values.psi,
   psiKey: values['psi-key'],
   psiConcurrency: values['psi-concurrency'] ? parseInt(values['psi-concurrency'], 10) : undefined,
 }).catch((err: Error) => {
