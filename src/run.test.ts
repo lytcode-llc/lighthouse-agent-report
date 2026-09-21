@@ -13,6 +13,9 @@ vi.mock('child_process', () => ({
         process.nextTick(() => cb(0))
       }
     },
+    stderr: { on: vi.fn() },
+    pid: 12345,
+    kill: vi.fn(),
   })),
 }))
 
@@ -352,5 +355,20 @@ describe('shellQuote', () => {
   it('handles embedded double quotes on win32', async () => {
     const { shellQuote } = await import('./run.js')
     expect(shellQuote('my "project"', 'win32')).toBe('"my \\"project\\""')
+  })
+})
+
+describe('rewriteUnlighthouseLine', () => {
+  it('rewrites the dynamic-sampling warning to be actionable', async () => {
+    const { rewriteUnlighthouseLine } = await import('./run.js')
+    const input = 'Dynamic sampling is in effect, to disable set the `dynamicSampling` option to `false` in your config.'
+    const expected = 'Dynamic sampling is on (default). Set `scanner.dynamicSampling: false` in unlighthouse.config.ts to disable.'
+    expect(rewriteUnlighthouseLine(input)).toBe(expected)
+  })
+
+  it('passes other lines through unchanged', async () => {
+    const { rewriteUnlighthouseLine } = await import('./run.js')
+    expect(rewriteUnlighthouseLine('some other warning')).toBe('some other warning')
+    expect(rewriteUnlighthouseLine('')).toBe('')
   })
 })

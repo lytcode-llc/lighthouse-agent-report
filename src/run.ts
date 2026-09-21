@@ -67,6 +67,13 @@ interface LighthouseReport {
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+export function rewriteUnlighthouseLine(line: string): string {
+  return line.replace(
+    'Dynamic sampling is in effect, to disable set the `dynamicSampling` option to `false` in your config.',
+    'Dynamic sampling is on (default). Set `scanner.dynamicSampling: false` in unlighthouse.config.ts to disable.'
+  )
+}
+
 function runUnlighthouse(site: string): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`\nRunning unlighthouse on ${site}…`)
@@ -75,10 +82,26 @@ function runUnlighthouse(site: string): Promise<void> {
     const proc = spawn(
       npx,
       ['unlighthouse-ci', '--site', site, '--reporter', 'jsonExpanded'],
-      { stdio: 'inherit' }
+      { stdio: ['inherit', 'inherit', 'pipe'] }
     )
 
+    let lineBuffer = ''
+
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      lineBuffer += chunk.toString()
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        process.stderr.write(rewriteUnlighthouseLine(line) + '\n')
+      }
+    })
+
     proc.on('close', (code) => {
+      // Flush remaining partial line
+      if (lineBuffer.length > 0) {
+        process.stderr.write(lineBuffer)
+      }
       if (code === 0) resolve()
       else reject(new Error(`unlighthouse-ci exited with code ${code}`))
     })

@@ -10,8 +10,9 @@ All notable changes to `@lytcode/lighthouse-agent-report` are documented here.
 - `--cwd <dir>` flag: explicitly set the working directory (skips workspace detection entirely; relative paths resolved before chdir; non-existent dirs get a copy-paste rerun command)
 - Recents store: `~/.config/lighthouse-agent-report/workspaces.json` remembers up to 10 recently used directories
 - PSI opt-in: PSI fetch is now off by default; use `--psi` to force with env key, `--psi-key KEY` for explicit key, or confirm the prompt when `PSI_API_KEY` is set in an interactive session
-- Scan-config onboarding: when `unlighthouse.config.ts` doesn't exist, a one-time prompt offers recommended defaults, custom settings (samples, dynamic sampling, cache), or advanced template creation
+- Scan-config onboarding: when `unlighthouse.config.ts` doesn't exist, a one-time prompt offers recommended defaults (cache off), custom settings (samples, dynamic sampling, cache), or advanced template creation
 - `hasWorkspaceMarkers()`, `hasUnlighthouseConfig()` exported for downstream use
+- `rewriteUnlighthouseLine()` exported for downstream use — rewrites unlighthouse's misleading "Dynamic sampling" warning to be actionable
 
 ### Changed
 
@@ -19,6 +20,9 @@ All notable changes to `@lytcode/lighthouse-agent-report` are documented here.
 - **BREAKING**: `@unlighthouse/cli` upgraded from `^0.14` to `^0.18.0` — cheerio/whatwg-encoding transitive dependency eliminated entirely
 - **BREAKING**: `PSI_API_KEY` env var no longer auto-runs PSI — user must confirm in TTY, or pass `--psi` / `--psi-key` to force
 - Workspace marker list: `package.json`, `lighthouse-audit.config.js`, `unlighthouse.config.ts`, `reports/`, `.unlighthouse/`
+- Generated `unlighthouse.config.ts` now uses plain `export default { ... }` instead of importing `defineConfig` from `unlighthouse/config` (avoids jiti resolution failures in target directories)
+- Default scan config writes `cache: false` (no stale results); template always includes all commented options for easy editing
+- Unlighthouse stderr is piped and line-buffered; the misleading "Dynamic sampling is in effect" warning is rewritten to be actionable
 
 ### Performance
 

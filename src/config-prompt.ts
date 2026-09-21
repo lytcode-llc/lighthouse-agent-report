@@ -2,41 +2,63 @@ import { existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import * as p from '@clack/prompts'
 
-const CONFIG_TEMPLATE = `export default {
-  // Scanner settings
-  scanner: {
-    // Number of Lighthouse samples per page (default: 1).
-    // Higher = more accurate results, slower run time.
-    // samples: 1,
+function buildConfigTemplate(opts: { samples?: number; dynamicSampling?: number; cache?: boolean } = {}): string {
+  const parts: string[] = []
 
-    // Dynamic sampling: audit more popular pages multiple times.
-    // Uses search engine indexing data to rank page importance.
-    // Set to 0 to disable.
-    // dynamicSampling: 10,
+  // scanner block
+  const scannerLines: string[] = []
+  scannerLines.push(`    // Number of Lighthouse samples per page (default: 1).`)
+  scannerLines.push(`    // Higher = more accurate results, slower run time.`)
+  scannerLines.push(`    // samples: 1,`)
+  scannerLines.push(``)
+  scannerLines.push(`    // Dynamic sampling: audit more popular pages multiple times.`)
+  scannerLines.push(`    // Uses search engine indexing data to rank page importance.`)
+  scannerLines.push(`    // Set to 0 to disable.`)
+  scannerLines.push(`    // dynamicSampling: 10,`)
+  scannerLines.push(``)
+  scannerLines.push(`    // Custom sampling: audit specific pages more times.`)
+  scannerLines.push(`    // Map of URL path → number of extra samples.`)
+  scannerLines.push(`    // customSampling: {},`)
 
-    // Custom sampling: audit specific pages more times.
-    // Map of URL path → number of extra samples.
-    // customSampling: {},
-  },
+  if (opts.samples !== undefined) {
+    scannerLines.push(`    samples: ${opts.samples},`)
+  }
+  if (opts.dynamicSampling !== undefined) {
+    scannerLines.push(`    dynamicSampling: ${opts.dynamicSampling},`)
+  }
 
-  // CI settings (used by lighthouse-agent-report)
-  ci: {
-    // Cache previous results (default: true).
-    // Set to false to run fresh audits every time.
-    // cache: false,
-  },
+  parts.push(`  scanner: {`)
+  parts.push(scannerLines.join('\n'))
+  parts.push(`  },`)
 
-  // Route filtering
-  // Uncomment to only audit specific pages:
-  // routes: {
-  //   include: ['/blog/**', '/docs/**'],
-  //   exclude: ['/api/**', '/admin/**'],
-  // },
+  // ci block
+  const cacheVal = opts.cache ?? false
+  parts.push(``)
+  parts.push(`  // CI settings (used by lighthouse-agent-report)`)
+  parts.push(`  ci: {`)
+  parts.push(`    // Cache previous results (default: true).`)
+  parts.push(`    // Set to false to run fresh audits every time.`)
+  parts.push(`    cache: ${cacheVal},`)
+  parts.push(`  },`)
 
-  // Device to audit (default: desktop)
-  // device: 'mobile',
+  // routes block
+  parts.push(``)
+  parts.push(`  // Route filtering`)
+  parts.push(`  // Uncomment to only audit specific pages:`)
+  parts.push(`  // routes: {`)
+  parts.push(`  //   include: ['/blog/**', '/docs/**'],`)
+  parts.push(`  //   exclude: ['/api/**', '/admin/**'],`)
+  parts.push(`  // },`)
+
+  // device
+  parts.push(``)
+  parts.push(`  // Device to audit (default: desktop)`)
+  parts.push(`  // device: 'mobile',`)
+
+  return `export default {\n${parts.join('\n')}\n}\n`
 }
-`
+
+const CONFIG_TEMPLATE = buildConfigTemplate()
 
 // ────────────────────────────────────────────────────────────────────────────
 // Config file detection
@@ -58,7 +80,7 @@ export type ScanConfigAction =
 export async function promptScanConfig(): Promise<ScanConfigAction> {
   if (!process.stdout.isTTY) {
     // Non-TTY: create with defaults, no prompt
-    return { type: 'defaults', cache: true }
+    return { type: 'defaults', cache: false }
   }
 
   const choice = await p.select({
@@ -92,7 +114,7 @@ export async function promptScanConfig(): Promise<ScanConfigAction> {
   }
 
   if (choice === 'defaults') {
-    return { type: 'defaults', cache: true }
+    return { type: 'defaults', cache: false }
   }
 
   // Custom settings
@@ -160,30 +182,15 @@ export function writeUnlighthouseConfig(dir: string, action: ScanConfigAction): 
     return
   }
 
-  // defaults or custom — write a config with the chosen values
-  const settings: string[] = []
-
-  if (action.type === 'custom') {
-    const scannerParts: string[] = []
-    if (action.samples !== 1) scannerParts.push(`    samples: ${action.samples},`)
-    if (action.dynamicSampling !== 10) scannerParts.push(`    dynamicSampling: ${action.dynamicSampling},`)
-    if (scannerParts.length > 0) {
-      settings.push(`  scanner: {\n${scannerParts.join('\n')}\n  },`)
-    }
-    if (action.cache) {
-      settings.push(`  ci: { cache: true },`)
-    }
-  }
-
-  // defaults: only ci.cache
   if (action.type === 'defaults') {
-    settings.push(`  ci: { cache: true },`)
+    writeFileSync(configPath, buildConfigTemplate({ cache: false }), 'utf8')
+    return
   }
 
-  const config = `export default {
-${settings.join('\n')}
-}
-`
+  // custom
+  const scannerOpts: { samples?: number; dynamicSampling?: number } = {}
+  if (action.samples !== 1) scannerOpts.samples = action.samples
+  if (action.dynamicSampling !== 10) scannerOpts.dynamicSampling = action.dynamicSampling
 
-  writeFileSync(configPath, config, 'utf8')
+  writeFileSync(configPath, buildConfigTemplate({ ...scannerOpts, cache: action.cache }), 'utf8')
 }

@@ -33,7 +33,7 @@ describe('hasUnlighthouseConfig', () => {
 
 describe('writeUnlighthouseConfig', () => {
   it('writes a template with defaults action', () => {
-    const action: ScanConfigAction = { type: 'defaults', cache: true }
+    const action: ScanConfigAction = { type: 'defaults', cache: false }
     writeUnlighthouseConfig(tmpDir, action)
 
     const configPath = join(tmpDir, 'unlighthouse.config.ts')
@@ -41,11 +41,11 @@ describe('writeUnlighthouseConfig', () => {
 
     const content = readFileSync(configPath, 'utf8')
     expect(content).toContain('export default')
-    expect(content).toContain('cache: true')
+    expect(content).toContain('cache: false')
     expect(content).not.toContain('defineConfig')
     expect(content).not.toContain('unlighthouse/config')
-    expect(content).not.toContain('samples')
-    expect(content).not.toContain('dynamicSampling')
+    expect(content).not.toContain('  samples:')
+    expect(content).not.toContain('  dynamicSampling:')
   })
 
   it('writes a template with custom settings', () => {
@@ -58,9 +58,9 @@ describe('writeUnlighthouseConfig', () => {
     writeUnlighthouseConfig(tmpDir, action)
 
     const content = readFileSync(join(tmpDir, 'unlighthouse.config.ts'), 'utf8')
-    expect(content).toContain('samples: 3')
-    expect(content).toContain('dynamicSampling: 20')
-    expect(content).not.toContain('cache')
+    expect(content).toContain('samples: 3,')
+    expect(content).toContain('dynamicSampling: 20,')
+    expect(content).toContain('cache: false')
   })
 
   it('writes a template with cache enabled in custom mode', () => {
@@ -94,7 +94,7 @@ describe('writeUnlighthouseConfig', () => {
     expect(content).toContain('device')
   })
 
-  it('defaults custom action omits default values from scanner', () => {
+  it('custom action with all defaults writes only cache line', () => {
     const action: ScanConfigAction = {
       type: 'custom',
       dynamicSampling: 10,  // default
@@ -104,8 +104,8 @@ describe('writeUnlighthouseConfig', () => {
     writeUnlighthouseConfig(tmpDir, action)
 
     const content = readFileSync(join(tmpDir, 'unlighthouse.config.ts'), 'utf8')
-    expect(content).not.toContain('samples')
-    expect(content).not.toContain('dynamicSampling')
-    expect(content).not.toContain('cache')
+    expect(content).not.toContain('  samples:')
+    expect(content).not.toContain('  dynamicSampling:')
+    expect(content).toContain('cache: false')
   })
 })
