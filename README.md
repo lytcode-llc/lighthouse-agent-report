@@ -45,7 +45,7 @@ cd my-project
 lighthouse-agent-report --site http://localhost:3000
 ```
 
-When run globally without `--cwd`, the tool detects whether your current directory contains project files (`package.json`, `lighthouse-audit.config.js`, etc.). If not, an interactive prompt lets you choose a recent workspace, create a new project, or use the current directory.
+When run globally without `--cwd`, the tool detects whether your current directory contains project files (`package.json`, `lighthouse-audit.config.js`, etc.). If not, an interactive prompt lets you choose a recent workspace, create a new project, or use the current directory. Pass `--cwd <dir>` to bypass workspace detection entirely.
 
 Use this if you want a single installation that works across multiple projects without adding it to each one's `package.json`. Note that upgrades affect all projects at once, with no per-project version pinning.
 
@@ -77,7 +77,7 @@ lighthouse-agent-report --site https://example.com --out ./my-reports
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--site` | URL to audit (required) | — |
-| `--cwd` | Working directory (prompts if no project detected) | auto-detect |
+| `--cwd` | Working directory (skips workspace detection) | auto-detect |
 | `--psi` | Force PageSpeed Insights fetch with env var key | off |
 | `--psi-key` | PageSpeed Insights API key for real-user field data | `PSI_API_KEY` env var |
 | `--psi-concurrency` | Concurrent PSI requests, 1–16 (free tier safe: sliding window at 2 req/sec) | `3` |

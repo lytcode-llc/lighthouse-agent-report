@@ -268,4 +268,89 @@ describe('run JSON chunking', () => {
       expect(page.markdownFile).toBeUndefined()
     }
   })
+
+  it('--cwd bypasses workspace marker check and changes directory', async () => {
+    const fs = await import('fs')
+    const tmpSub = fs.mkdtempSync(join(tmpDir, 'cwd-'))
+    routesState.routes = makeRoutes(1)
+
+    // existsSync mock must allow the tmpSub directory to pass the existence check
+    const originalExistsSync = vi.mocked((await import('fs')).existsSync)
+    originalExistsSync.mockImplementation((p) => {
+      if ((p as string) === tmpSub) return true
+      const path = p as string
+      return path.endsWith('ci-result.json') || (fsState.includeLighthouse && path.endsWith('lighthouse.json'))
+    })
+
+    try {
+      const { run } = await import('./run.js')
+      await run({ site: 'https://example.com', cwd: tmpSub })
+
+      // If --cwd bypasses markers, run proceeds (no marker file needed in tmpSub)
+      const indexJsonKey = [...written.keys()].find((k) => /[/\\]index\.json$/.test(k))
+      expect(indexJsonKey).toBeDefined()
+    } finally {
+      originalExistsSync.mockImplementation((p) => {
+        const path = p as string
+        return path.endsWith('ci-result.json') || (fsState.includeLighthouse && path.endsWith('lighthouse.json'))
+      })
+    }
+  })
+
+  it('--cwd to non-existent dir exits with error', async () => {
+    const origExit = process.exit
+    process.exit = vi.fn(() => { throw new Error('EXIT') }) as any
+
+    const fakePath = '/nonexistent/dir/xyz'
+    const { run } = await import('./run.js')
+
+    try {
+      await run({ site: 'https://example.com', cwd: fakePath })
+    } catch (e: any) {
+      // process.exit mock throws to halt execution
+      expect(e.message).toBe('EXIT')
+    }
+
+    expect(process.exit).toHaveBeenCalledWith(1)
+
+    process.exit = origExit
+  })
+})
+
+describe('shellQuote', () => {
+  it('leaves plain args unquoted on posix', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('--site', 'linux')).toBe('--site')
+    expect(shellQuote('http://localhost:3000', 'linux')).toBe('http://localhost:3000')
+  })
+
+  it('leaves plain args unquoted on win32', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('--site', 'win32')).toBe('--site')
+  })
+
+  it('single-quotes args with spaces on posix', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('/my project', 'linux')).toBe("'/my project'")
+  })
+
+  it('double-quotes args with spaces on win32', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('/my project', 'win32')).toBe('"/my project"')
+  })
+
+  it('leaves Windows paths unquoted on win32', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('C:\\Users\\me\\project', 'win32')).toBe('C:\\Users\\me\\project')
+  })
+
+  it('handles embedded single quotes on posix', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote("it's a dir", 'linux')).toBe("'it'\\''s a dir'")
+  })
+
+  it('handles embedded double quotes on win32', async () => {
+    const { shellQuote } = await import('./run.js')
+    expect(shellQuote('my "project"', 'win32')).toBe('"my \\"project\\""')
+  })
 })

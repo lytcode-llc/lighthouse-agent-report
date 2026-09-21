@@ -7,7 +7,7 @@ All notable changes to `@lytcode/lighthouse-agent-report` are documented here.
 ### Added
 
 - Workspace selection for global installs: when no project markers found, an interactive prompt lets you choose a recent dir, create a new project, or use the current directory (via `@clack/prompts`)
-- `--cwd <dir>` flag: explicitly set the working directory (relative paths resolved before chdir)
+- `--cwd <dir>` flag: explicitly set the working directory (skips workspace detection entirely; relative paths resolved before chdir; non-existent dirs get a copy-paste rerun command)
 - Recents store: `~/.config/lighthouse-agent-report/workspaces.json` remembers up to 10 recently used directories
 - PSI opt-in: PSI fetch is now off by default; use `--psi` to force with env key, `--psi-key KEY` for explicit key, or confirm the prompt when `PSI_API_KEY` is set in an interactive session
 - Scan-config onboarding: when `unlighthouse.config.ts` doesn't exist, a one-time prompt offers recommended defaults, custom settings (samples, dynamic sampling, cache), or advanced template creation

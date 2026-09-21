@@ -229,18 +229,41 @@ function pruneOldRuns(absOutputDir: string): void {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Shell quoting for rerun command echo
+// ────────────────────────────────────────────────────────────────────────────
+
+export function shellQuote(arg: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    if (/^[A-Za-z0-9_\-=/.,:@%+\\]+$/.test(arg)) return arg
+    return `"${arg.replace(/"/g, '\\"')}"`
+  }
+  if (/^[A-Za-z0-9_\-=/.,:@%+]+$/.test(arg)) return arg
+  return `'${arg.replace(/'/g, `'\\''`)}'`
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Main export
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function run(opts: RunOptions): Promise<void> {
   // ── Workspace selection ──────────────────────────────────────────────────
   if (opts.cwd) {
-    if (!hasWorkspaceMarkers(opts.cwd)) {
+    if (!existsSync(opts.cwd)) {
+      const script = process.argv[1]
+      const cmd = script.endsWith('cli.js')
+        ? `node ${shellQuote(script)}`
+        : 'lighthouse-agent-report'
+      const rerun = [cmd, ...process.argv.slice(2).map((a) => shellQuote(a))].join(' ')
+      const mkdirCmd = process.platform === 'win32' ? 'mkdir' : 'mkdir -p'
+
       console.error(
-        `\nNo workspace markers found in ${opts.cwd}. Expected one of: package.json, lighthouse-audit.config.js, unlighthouse.config.ts, reports/, .unlighthouse/\n`
+        `\n--cwd directory does not exist: ${opts.cwd}\n` +
+        `Create it first (${mkdirCmd} ${shellQuote(opts.cwd)}), then copy and re-run:\n` +
+        `  ${rerun}\n`
       )
       process.exit(1)
     }
+    // --cwd bypasses workspace marker check
     process.chdir(opts.cwd)
   } else if (!hasWorkspaceMarkers(process.cwd())) {
     const chosen = await promptWorkspace()
