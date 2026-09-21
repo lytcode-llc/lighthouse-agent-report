@@ -2,9 +2,7 @@ import { existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import * as p from '@clack/prompts'
 
-const CONFIG_TEMPLATE = `import { defineConfig } from 'unlighthouse/config'
-
-export default defineConfig({
+const CONFIG_TEMPLATE = `export default {
   // Scanner settings
   scanner: {
     // Number of Lighthouse samples per page (default: 1).
@@ -37,7 +35,7 @@ export default defineConfig({
 
   // Device to audit (default: desktop)
   // device: 'mobile',
-})
+}
 `
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -182,11 +180,9 @@ export function writeUnlighthouseConfig(dir: string, action: ScanConfigAction): 
     settings.push(`  ci: { cache: true },`)
   }
 
-  const config = `import { defineConfig } from 'unlighthouse/config'
-
-export default defineConfig({
+  const config = `export default {
 ${settings.join('\n')}
-})
+}
 `
 
   writeFileSync(configPath, config, 'utf8')

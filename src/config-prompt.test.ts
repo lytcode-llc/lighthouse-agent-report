@@ -40,9 +40,10 @@ describe('writeUnlighthouseConfig', () => {
     expect(existsSync(configPath)).toBe(true)
 
     const content = readFileSync(configPath, 'utf8')
-    expect(content).toContain('defineConfig')
-    expect(content).toContain('unlighthouse/config')
+    expect(content).toContain('export default')
     expect(content).toContain('cache: true')
+    expect(content).not.toContain('defineConfig')
+    expect(content).not.toContain('unlighthouse/config')
     expect(content).not.toContain('samples')
     expect(content).not.toContain('dynamicSampling')
   })
@@ -80,7 +81,9 @@ describe('writeUnlighthouseConfig', () => {
     writeUnlighthouseConfig(tmpDir, action)
 
     const content = readFileSync(join(tmpDir, 'unlighthouse.config.ts'), 'utf8')
-    expect(content).toContain('defineConfig')
+    expect(content).toContain('export default')
+    expect(content).not.toContain('defineConfig')
+    expect(content).not.toContain('unlighthouse/config')
     expect(content).toContain('samples')
     expect(content).toContain('dynamicSampling')
     expect(content).toContain('customSampling')
