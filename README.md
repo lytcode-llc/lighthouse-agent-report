@@ -1,10 +1,6 @@
 # @lytcode/lighthouse-agent-report
 
-Automates website performance testing for SEO and accessibility. Runs Lighthouse across your entire site and generates an agent-readable markdown report your AI coding assistant can use to target and fix performance issues. On production, it also runs PageSpeed Insights to include real-user Core Web Vitals alongside lab scores.
-
-Wraps [unlighthouse](https://unlighthouse.dev/) for URL discovery and execution. Automatically detects your framework and maps discovered URLs to source files — enabling a coding agent to trace every issue back to the exact file responsible.
-
-Works with **Next.js** (App Router and Pages Router), **Astro**, **SvelteKit**, and **Gatsby** out of the box. The Lighthouse audit runs against any HTTP server regardless of framework.
+Automated Lighthouse analysis (performance, SEO, accessibility) with agent-readable reporting output. Runs Lighthouse across your entire site and generates an agent-readable markdown report your AI coding assistant can use to target and fix performance issues. Optional PageSpeed Insights analysis and reporting. lighthouse-agent-report automates the process of remediating website performance by generating markdown and json that coding agents can read to understand what issues to fix.
 
 ## Install
 
@@ -49,20 +45,6 @@ When run globally without `--cwd`, the tool detects whether your current directo
 
 Use this if you want a single installation that works across multiple projects without adding it to each one's `package.json`. Note that upgrades affect all projects at once, with no per-project version pinning.
 
-## Framework support
-
-The package automatically detects your framework and scans the appropriate directory:
-
-| Framework | Directory | Dynamic segment syntax |
-|-----------|-----------|----------------------|
-| Next.js App Router | `app/` or `src/app/` | `[slug]`, `[...slug]`, `(group)` |
-| Next.js Pages Router | `pages/` or `src/pages/` | `[slug]`, `[...slug]` |
-| Astro | `src/pages/` or `pages/` | `[slug].astro`, `[...slug].astro` |
-| SvelteKit | `src/routes/` | `[param]`, `[...rest]`, `(group)`, `[[optional]]` |
-| Gatsby | `src/pages/` or `pages/` | n/a (static pages only) |
-
-Detection is automatic — no configuration needed. The audit itself works with any HTTP server; framework detection only affects the **Route:** attribution in the report.
-
 ## Usage
 
 ```bash
@@ -86,14 +68,23 @@ lighthouse-agent-report --site https://example.com --out ./my-reports
 
 ## Configuration (optional)
 
-No config file is required. If you need to change the output directory, create `lighthouse-audit.config.js` in your project root:
+No config file is required. To change the output directory, pass `--out`:
+
+```bash
+lighthouse-agent-report --site https://example.com --out ./my-reports
+```
+
+For persistent defaults, create `lighthouse-audit.config.js` in your project root:
 
 ```js
 // lighthouse-audit.config.js
 export default {
-  output: 'reports/lighthouse', // default
+  site: 'https://example.com',
+  output: 'reports/lighthouse',
 }
 ```
+
+See [unlighthouse API doc](https://unlighthouse.dev/api-doc/config) for all config options.
 
 ## Real-user field data (PageSpeed Insights)
 
