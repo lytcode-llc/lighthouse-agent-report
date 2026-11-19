@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@unlighthouse/cli": "^0.18.0"
+    "@unlighthouse/cli": "^0.19.1"
   },
   "devDependencies": {
     "tsup": "^8",
