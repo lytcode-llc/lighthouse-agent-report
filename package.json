@@ -26,11 +26,15 @@
   "devDependencies": {
     "tsup": "^9",
     "tsx": "^4",
-    "typescript": "^7",
+    "typescript": "^5.9.3",
     "vitest": "^5"
   },
   "engines": {
     "node": ">=22.18.0"
+  },
+  "overrides": {
+    "@lhci/utils": "^0.16.1",
+    "esbuild": "^0.28.1"
   },
   "license": "MIT",
   "author": "Lytcode LLC",
