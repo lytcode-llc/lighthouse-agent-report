@@ -2,6 +2,20 @@
 
 All notable changes to `@lytcode/lighthouse-agent-report` are documented here.
 
+## [3.0.1] — 2026-11-19
+
+### Security
+
+- **`@unlighthouse/cli` upgraded from `^0.18.0` to `^0.19.1`** — fixes critical `shell-quote` command injection (GHSA-pqg4-j6r4-53mv) plus `node-forge`, `undici`, and `vite` advisories in the runtime dependency tree
+- Added `overrides` for `@lhci/utils` (`^0.16.1`) and `esbuild` (`^0.28.1`) — clears 13 remaining high/low transitive advisories (`extract-zip`, `puppeteer-core`, `proxy-agent` chain, `zod`, `chromium-bidi`, `lighthouse`) by pulling Lighthouse 13 / Puppeteer 25
+- `npm audit` now reports **0 vulnerabilities** (was 26: 3 critical, 18 high)
+- `vitest` upgraded `^3` → `^5` and `tsup` `^8` → `^9` (dev-only; fixes critical `tinypool` advisories)
+
+### Notes
+
+- No behavioral changes — same CLI interface and report output; consumers receive the security fixes in their dependency tree upon installing 3.0.1
+- Overrides apply to this package's own install tree (npm applies `overrides` only at the project root)
+
 ## [3.0.0] — 2026-09-17
 
 ### Added
